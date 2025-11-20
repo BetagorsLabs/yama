@@ -1,5 +1,6 @@
 import Fastify, { FastifyRequest, FastifyReply } from "fastify";
 import { helloYamaCore, createModelValidator, type YamaModels, type ValidationResult, type ModelField, fieldToJsonSchema } from "@yama/core";
+import { generateOpenAPI } from "@yama/docs-generator";
 import yaml from "js-yaml";
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, dirname, extname, resolve } from "path";
@@ -355,6 +356,75 @@ export async function startYamaNodeRuntime(
   app.get("/config", async () => ({
     config
   }));
+
+  // Serve OpenAPI spec
+  app.get("/openapi.json", async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!config) {
+      reply.status(404).send({ error: "No config loaded" });
+      return;
+    }
+    const openAPISpec = generateOpenAPI(config);
+    reply.type("application/json").send(openAPISpec);
+  });
+
+  // Serve Swagger UI
+  app.get("/docs", async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!config) {
+      reply.status(404).send({ error: "No config loaded" });
+      return;
+    }
+    const openAPISpec = generateOpenAPI(config);
+    const specJson = JSON.stringify(openAPISpec, null, 2);
+    
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${config.name || "API"} - API Documentation</title>
+  <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
+  <style>
+    html {
+      box-sizing: border-box;
+      overflow: -moz-scrollbars-vertical;
+      overflow-y: scroll;
+    }
+    *, *:before, *:after {
+      box-sizing: inherit;
+    }
+    body {
+      margin:0;
+      background: #fafafa;
+    }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function() {
+      const spec = ${specJson};
+      window.ui = SwaggerUIBundle({
+        spec: spec,
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "StandaloneLayout"
+      });
+    };
+  </script>
+</body>
+</html>`;
+    
+    reply.type("text/html").send(html);
+  });
 
   // Load handlers and register routes
   if (config?.endpoints && handlersDir) {

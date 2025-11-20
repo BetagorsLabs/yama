@@ -14,7 +14,8 @@
     "paths": {
       "@yama/core": ["packages/core/src"],
       "@yama/runtime-node": ["packages/runtime-node/src"],
-      "@yama/sdk-ts": ["packages/sdk-ts/src"]
+      "@yama/sdk-ts": ["packages/sdk-ts/src"],
+      "@yama/docs-generator": ["packages/docs-generator/src"]
     }
   }
 }

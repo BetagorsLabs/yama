@@ -19,6 +19,7 @@
     "@yama/core": "workspace:*",
     "@yama/runtime-node": "workspace:*",
     "@yama/sdk-ts": "workspace:*",
+    "@yama/docs-generator": "workspace:*",
     "commander": "^12.0.0",
     "chokidar": "^4.0.0",
     "js-yaml": "^4.1.1"

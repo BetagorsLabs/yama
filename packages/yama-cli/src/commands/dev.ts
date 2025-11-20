@@ -82,7 +82,8 @@ async function startServer(port: number, configPath: string): Promise<void> {
     console.log(`🔄 Changes auto-sync`);
     console.log(`🌐 Server: http://localhost:${port}`);
     console.log(`   Health: http://localhost:${port}/health`);
-    console.log(`   Config: http://localhost:${port}/config\n`);
+    console.log(`   Config: http://localhost:${port}/config`);
+    console.log(`   📚 Docs: http://localhost:${port}/docs\n`);
   } catch (error) {
     console.error("❌ Failed to start server:", error instanceof Error ? error.message : String(error));
     if (error instanceof Error && error.message.includes("EADDRINUSE")) {

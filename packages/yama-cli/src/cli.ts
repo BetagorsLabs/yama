@@ -8,6 +8,7 @@ import { validateCommand } from "./commands/validate.js";
 import { configCommand } from "./commands/config.js";
 import { endpointsCommand } from "./commands/endpoints.js";
 import { modelsCommand } from "./commands/models.js";
+import { docsCommand } from "./commands/docs.js";
 
 const program = new Command();
 
@@ -97,6 +98,14 @@ program
   .description("List all models")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .action(modelsCommand);
+
+program
+  .command("docs")
+  .description("Generate API documentation")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("-f, --format <format>", "Output format (openapi, json, yaml, swagger-ui, html, markdown, md)", "openapi")
+  .option("-o, --output <path>", "Output path for generated documentation")
+  .action(docsCommand);
 
 program.parse();
 
