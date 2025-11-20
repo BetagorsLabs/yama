@@ -4,7 +4,7 @@
 
 Yama separates **structure** from **logic**:
 
-* **Structure** lives in YAML (models, endpoints, auth rules, behaviors)
+* **Structure** lives in YAML (schemas, endpoints, auth rules, behaviors)
 * **Logic** lives in TypeScript handlers
 * **Platform** handles everything else (routing, validation, generation, docs, consistency)
 

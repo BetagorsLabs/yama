@@ -1,27 +1,27 @@
 import Ajv, { ValidateFunction, ErrorObject } from "ajv";
 import addFormats from "ajv-formats";
 
-// Type definitions for YAML model structure
-export interface ModelField {
+// Type definitions for YAML schema structure
+export interface SchemaField {
   type?: "string" | "number" | "boolean" | "integer" | "array" | "object";
   required?: boolean;
   default?: unknown;
   format?: string;
-  items?: ModelField; // For array types
-  properties?: Record<string, ModelField>; // For object types
+  items?: SchemaField; // For array types
+  properties?: Record<string, SchemaField>; // For object types
   min?: number;
   max?: number;
   pattern?: string;
   enum?: unknown[];
-  $ref?: string; // Reference to another model name
+  $ref?: string; // Reference to another schema name
 }
 
-export interface ModelDefinition {
-  fields: Record<string, ModelField>;
+export interface SchemaDefinition {
+  fields: Record<string, SchemaField>;
 }
 
-export interface YamaModels {
-  [modelName: string]: ModelDefinition;
+export interface YamaSchemas {
+  [schemaName: string]: SchemaDefinition;
 }
 
 // Validation error result
@@ -32,28 +32,28 @@ export interface ValidationResult {
 }
 
 /**
- * Convert Yama model field to JSON Schema property
+ * Convert Yama schema field to JSON Schema property
  */
 export function fieldToJsonSchema(
-  field: ModelField,
+  field: SchemaField,
   fieldName: string,
-  models?: YamaModels,
+  schemas?: YamaSchemas,
   visited: Set<string> = new Set()
 ): Record<string, unknown> {
-  // Handle model references
+  // Handle schema references
   if (field.$ref) {
     if (visited.has(field.$ref)) {
       throw new Error(`Circular reference detected: ${field.$ref}`);
     }
 
-    if (!models || !models[field.$ref]) {
-      throw new Error(`Model reference "${field.$ref}" not found`);
+    if (!schemas || !schemas[field.$ref]) {
+      throw new Error(`Schema reference "${field.$ref}" not found`);
     }
 
-    // Recursively convert the referenced model
+    // Recursively convert the referenced schema
     visited.add(field.$ref);
-    const referencedModel = models[field.$ref];
-    const schema = modelToJsonSchema(field.$ref, referencedModel, models, visited);
+    const referencedSchema = schemas[field.$ref];
+    const schema = schemaToJsonSchema(field.$ref, referencedSchema, schemas, visited);
     visited.delete(field.$ref);
     return schema;
   }
@@ -92,7 +92,7 @@ export function fieldToJsonSchema(
 
   // Handle array types
   if (field.type === "array" && field.items) {
-    schema.items = fieldToJsonSchema(field.items, "item", models, visited);
+    schema.items = fieldToJsonSchema(field.items, "item", schemas, visited);
   }
 
   // Handle object types
@@ -100,7 +100,7 @@ export function fieldToJsonSchema(
     const properties: Record<string, unknown> = {};
     const required: string[] = [];
     for (const [propName, propField] of Object.entries(field.properties)) {
-      properties[propName] = fieldToJsonSchema(propField, propName, models, visited);
+      properties[propName] = fieldToJsonSchema(propField, propName, schemas, visited);
       if (propField.required) {
         required.push(propName);
       }
@@ -113,19 +113,19 @@ export function fieldToJsonSchema(
 }
 
 /**
- * Convert Yama model definition to JSON Schema
+ * Convert Yama schema definition to JSON Schema
  */
-export function modelToJsonSchema(
-  modelName: string,
-  modelDef: ModelDefinition,
-  models?: YamaModels,
+export function schemaToJsonSchema(
+  schemaName: string,
+  schemaDef: SchemaDefinition,
+  schemas?: YamaSchemas,
   visited: Set<string> = new Set()
 ): Record<string, unknown> {
   const properties: Record<string, unknown> = {};
   const required: string[] = [];
 
-  for (const [fieldName, field] of Object.entries(modelDef.fields)) {
-    properties[fieldName] = fieldToJsonSchema(field, fieldName, models, visited);
+  for (const [fieldName, field] of Object.entries(schemaDef.fields)) {
+    properties[fieldName] = fieldToJsonSchema(field, fieldName, schemas, visited);
     
     if (field.required) {
       required.push(fieldName);
@@ -142,9 +142,9 @@ export function modelToJsonSchema(
 }
 
 /**
- * Model validator class
+ * Schema validator class
  */
-export class ModelValidator {
+export class SchemaValidator {
   private ajv: Ajv;
   private validators: Map<string, ValidateFunction> = new Map();
 
@@ -154,28 +154,28 @@ export class ModelValidator {
   }
 
   /**
-   * Register models and create validators
+   * Register schemas and create validators
    */
-  registerModels(models: YamaModels): void {
+  registerSchemas(schemas: YamaSchemas): void {
     this.validators.clear();
 
-    for (const [modelName, modelDef] of Object.entries(models)) {
-      const schema = modelToJsonSchema(modelName, modelDef, models);
+    for (const [schemaName, schemaDef] of Object.entries(schemas)) {
+      const schema = schemaToJsonSchema(schemaName, schemaDef, schemas);
       const validator = this.ajv.compile(schema);
-      this.validators.set(modelName, validator);
+      this.validators.set(schemaName, validator);
     }
   }
 
   /**
-   * Validate data against a model
+   * Validate data against a schema
    */
-  validate(modelName: string, data: unknown): ValidationResult {
-    const validator = this.validators.get(modelName);
+  validate(schemaName: string, data: unknown): ValidationResult {
+    const validator = this.validators.get(schemaName);
 
     if (!validator) {
       return {
         valid: false,
-        errorMessage: `Model "${modelName}" not found`
+        errorMessage: `Schema "${schemaName}" not found`
       };
     }
 
@@ -192,7 +192,7 @@ export class ModelValidator {
   }
 
   /**
-   * Validate data against a JSON schema directly (without registering as a model)
+   * Validate data against a JSON schema directly (without registering as a schema)
    */
   validateSchema(schema: Record<string, unknown>, data: unknown): ValidationResult {
     try {
@@ -230,10 +230,10 @@ export class ModelValidator {
 }
 
 /**
- * Create a new model validator instance
+ * Create a new schema validator instance
  */
-export function createModelValidator(): ModelValidator {
-  return new ModelValidator();
+export function createSchemaValidator(): SchemaValidator {
+  return new SchemaValidator();
 }
 
 // Authentication/Authorization types

@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import { readYamaConfig } from "../utils/file-utils.js";
 import { findYamaConfig } from "../utils/project-detection.js";
-import { createModelValidator, type YamaModels } from "@yama/core";
+import { createSchemaValidator, type YamaSchemas } from "@yama/core";
 
 interface ValidateOptions {
   config?: string;
@@ -22,7 +22,7 @@ export async function validateCommand(options: ValidateOptions): Promise<void> {
     const config = readYamaConfig(configPath) as {
       name?: string;
       version?: string;
-      models?: YamaModels;
+      schemas?: YamaSchemas;
       endpoints?: Array<{
         path: string;
         method: string;
@@ -48,22 +48,22 @@ export async function validateCommand(options: ValidateOptions): Promise<void> {
       isValid = false;
     }
 
-    // Validate models
-    if (config.models) {
-      const validator = createModelValidator();
-      validator.registerModels(config.models);
+    // Validate schemas
+    if (config.schemas) {
+      const validator = createSchemaValidator();
+      validator.registerSchemas(config.schemas);
 
-      console.log(`✅ Found ${Object.keys(config.models).length} model(s)`);
+      console.log(`✅ Found ${Object.keys(config.schemas).length} schema(s)`);
 
-      // Validate each model
-      for (const [modelName, modelDef] of Object.entries(config.models)) {
-        if (!modelDef.fields || Object.keys(modelDef.fields).length === 0) {
-          errors.push(`❌ Model '${modelName}' has no fields`);
+      // Validate each schema
+      for (const [schemaName, schemaDef] of Object.entries(config.schemas)) {
+        if (!schemaDef.fields || Object.keys(schemaDef.fields).length === 0) {
+          errors.push(`❌ Schema '${schemaName}' has no fields`);
           isValid = false;
         }
       }
     } else {
-      console.log("⚠️  No models defined");
+      console.log("⚠️  No schemas defined");
     }
 
     // Validate endpoints
@@ -86,14 +86,14 @@ export async function validateCommand(options: ValidateOptions): Promise<void> {
           isValid = false;
         }
 
-        // Validate body/response model references
-        if (endpoint.body?.type && config.models && !config.models[endpoint.body.type]) {
-          errors.push(`❌ Endpoint ${endpoint.method} ${endpoint.path} references unknown model: ${endpoint.body.type}`);
+        // Validate body/response schema references
+        if (endpoint.body?.type && config.schemas && !config.schemas[endpoint.body.type]) {
+          errors.push(`❌ Endpoint ${endpoint.method} ${endpoint.path} references unknown schema: ${endpoint.body.type}`);
           isValid = false;
         }
 
-        if (endpoint.response?.type && config.models && !config.models[endpoint.response.type]) {
-          errors.push(`❌ Endpoint ${endpoint.method} ${endpoint.path} references unknown model: ${endpoint.response.type}`);
+        if (endpoint.response?.type && config.schemas && !config.schemas[endpoint.response.type]) {
+          errors.push(`❌ Endpoint ${endpoint.method} ${endpoint.path} references unknown schema: ${endpoint.response.type}`);
           isValid = false;
         }
       }

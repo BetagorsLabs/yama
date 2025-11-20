@@ -3,7 +3,7 @@
  * Generates OpenAPI 3.0 specifications and other documentation formats from yama.yaml
  */
 
-import { modelToJsonSchema, type YamaModels, type ModelDefinition } from "@yama/core";
+import { schemaToJsonSchema, type YamaSchemas, type SchemaDefinition } from "@yama/core";
 
 export interface EndpointDefinition {
   path: string;
@@ -37,7 +37,7 @@ export interface EndpointDefinition {
 export interface YamaConfig {
   name?: string;
   version?: string;
-  models?: YamaModels;
+  schemas?: YamaSchemas;
   auth?: {
     providers?: Array<{
       type: "jwt" | "api-key";
@@ -164,7 +164,7 @@ function extractPathParams(path: string): string[] {
  */
 function endpointToOpenAPIOperation(
   endpoint: EndpointDefinition,
-  models?: YamaModels,
+  schemas?: YamaSchemas,
   authConfig?: YamaConfig["auth"]
 ): OpenAPISpec["paths"][string][string] {
   const operation: OpenAPISpec["paths"][string][string] = {
@@ -224,8 +224,8 @@ function endpointToOpenAPIOperation(
     const bodyType = endpoint.body.type;
     let schema: Record<string, unknown>;
 
-    if (models && models[bodyType]) {
-      // Reference to a model
+    if (schemas && schemas[bodyType]) {
+      // Reference to a schema
       schema = { $ref: `#/components/schemas/${bodyType}` };
     } else {
       // Fallback to basic type
@@ -255,8 +255,8 @@ function endpointToOpenAPIOperation(
     const responseType = endpoint.response.type;
     let schema: Record<string, unknown>;
 
-    if (models && models[responseType]) {
-      // Reference to a model
+    if (schemas && schemas[responseType]) {
+      // Reference to a schema
       schema = { $ref: `#/components/schemas/${responseType}` };
     } else {
       // Fallback to basic type
@@ -330,14 +330,14 @@ export function generateOpenAPI(config: YamaConfig): OpenAPISpec {
     }
   };
 
-  // Convert models to OpenAPI schemas
-  if (config.models) {
-    for (const [modelName, modelDef] of Object.entries(config.models)) {
+  // Convert schemas to OpenAPI schemas
+  if (config.schemas) {
+    for (const [schemaName, schemaDef] of Object.entries(config.schemas)) {
       try {
-        const schema = modelToJsonSchema(modelName, modelDef, config.models);
-        spec.components.schemas[modelName] = schema;
+        const schema = schemaToJsonSchema(schemaName, schemaDef, config.schemas);
+        spec.components.schemas[schemaName] = schema;
       } catch (error) {
-        console.warn(`Warning: Failed to convert model "${modelName}" to schema:`, error);
+        console.warn(`Warning: Failed to convert schema "${schemaName}" to OpenAPI schema:`, error);
       }
     }
   }
@@ -353,7 +353,7 @@ export function generateOpenAPI(config: YamaConfig): OpenAPISpec {
       }
 
       const method = endpoint.method.toLowerCase();
-      spec.paths[openAPIPath][method] = endpointToOpenAPIOperation(endpoint, config.models, config.auth);
+      spec.paths[openAPIPath][method] = endpointToOpenAPIOperation(endpoint, config.schemas, config.auth);
     }
   }
 

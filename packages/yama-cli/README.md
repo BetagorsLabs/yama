@@ -105,12 +105,12 @@ List all endpoints defined in `yama.yaml`.
 yama endpoints
 ```
 
-#### `yama models`
+#### `yama schemas`
 
-List all models defined in `yama.yaml`.
+List all schemas defined in `yama.yaml`.
 
 ```bash
-yama models
+yama schemas
 ```
 
 ## Features

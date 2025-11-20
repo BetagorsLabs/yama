@@ -8,7 +8,7 @@ auth:
     - type: api-key
       header: X-API-Key
 
-models:
+schemas:
   Todo:
     fields:
       id:

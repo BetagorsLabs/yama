@@ -18,7 +18,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
   const yamaConfig = {
     name: projectName,
     version: version,
-    models: {
+    schemas: {
       Example: {
         fields: {
           id: { type: "string", required: true },
@@ -41,7 +41,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
   const yamlContent = `name: ${projectName}
 version: ${version}
 
-models:
+schemas:
   Example:
     fields:
       id:

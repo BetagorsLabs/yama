@@ -8,5 +8,5 @@ export { generateCommand } from "./commands/generate.js";
 export { validateCommand } from "./commands/validate.js";
 export { configCommand } from "./commands/config.js";
 export { endpointsCommand } from "./commands/endpoints.js";
-export { modelsCommand } from "./commands/models.js";
+export { schemasCommand } from "./commands/schemas.js";
 

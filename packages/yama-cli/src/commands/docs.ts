@@ -262,12 +262,12 @@ function generateMarkdown(spec: ReturnType<typeof generateOpenAPI>): string {
     }
   }
 
-  // Models/Schemas
+  // Schemas
   if (Object.keys(spec.components.schemas).length > 0) {
-    md += `## Models\n\n`;
+    md += `## Schemas\n\n`;
 
-    for (const [modelName, schema] of Object.entries(spec.components.schemas)) {
-      const modelSchema = schema as {
+    for (const [schemaName, schema] of Object.entries(spec.components.schemas)) {
+      const schemaDef = schema as {
         type?: string;
         properties?: Record<string, {
           type?: string;
@@ -278,13 +278,13 @@ function generateMarkdown(spec: ReturnType<typeof generateOpenAPI>): string {
         required?: string[];
       };
 
-      md += `### ${modelName}\n\n`;
+      md += `### ${schemaName}\n\n`;
 
-      if (modelSchema.properties) {
+      if (schemaDef.properties) {
         md += `| Property | Type | Required | Description |\n`;
         md += `|----------|------|----------|-------------|\n`;
 
-        for (const [propName, propSchema] of Object.entries(modelSchema.properties)) {
+        for (const [propName, propSchema] of Object.entries(schemaDef.properties)) {
           let type = "unknown";
           if (propSchema.$ref) {
             type = propSchema.$ref.split("/").pop() as string;
@@ -300,7 +300,7 @@ function generateMarkdown(spec: ReturnType<typeof generateOpenAPI>): string {
             }
           }
 
-          const required = modelSchema.required?.includes(propName) ? "Yes" : "No";
+          const required = schemaDef.required?.includes(propName) ? "Yes" : "No";
           md += `| ${propName} | ${type} | ${required} | |\n`;
         }
         md += `\n`;

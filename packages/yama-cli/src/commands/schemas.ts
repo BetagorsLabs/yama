@@ -1,13 +1,13 @@
 import { existsSync } from "fs";
 import { readYamaConfig } from "../utils/file-utils.js";
 import { findYamaConfig } from "../utils/project-detection.js";
-import type { YamaModels } from "@yama/core";
+import type { YamaSchemas } from "@yama/core";
 
-interface ModelsOptions {
+interface SchemasOptions {
   config?: string;
 }
 
-export async function modelsCommand(options: ModelsOptions): Promise<void> {
+export async function schemasCommand(options: SchemasOptions): Promise<void> {
   const configPath = options.config || findYamaConfig() || "yama.yaml";
 
   if (!existsSync(configPath)) {
@@ -17,21 +17,21 @@ export async function modelsCommand(options: ModelsOptions): Promise<void> {
 
   try {
     const config = readYamaConfig(configPath) as {
-      models?: YamaModels;
+      schemas?: YamaSchemas;
     };
 
-    if (!config.models || Object.keys(config.models).length === 0) {
-      console.log("No models defined");
+    if (!config.schemas || Object.keys(config.schemas).length === 0) {
+      console.log("No schemas defined");
       return;
     }
 
-    console.log(`📦 Models (${Object.keys(config.models).length}):\n`);
+    console.log(`📦 Schemas (${Object.keys(config.schemas).length}):\n`);
 
-    for (const [modelName, modelDef] of Object.entries(config.models)) {
-      console.log(`${modelName}:`);
+    for (const [schemaName, schemaDef] of Object.entries(config.schemas)) {
+      console.log(`${schemaName}:`);
       
-      if (modelDef.fields) {
-        for (const [fieldName, field] of Object.entries(modelDef.fields)) {
+      if (schemaDef.fields) {
+        for (const [fieldName, field] of Object.entries(schemaDef.fields)) {
           const required = field.required ? "required" : "optional";
           const type = field.$ref || field.type || "unknown";
           const defaultVal = field.default !== undefined ? ` (default: ${JSON.stringify(field.default)})` : "";
@@ -43,7 +43,7 @@ export async function modelsCommand(options: ModelsOptions): Promise<void> {
       console.log();
     }
   } catch (error) {
-    console.error("❌ Failed to read models:", error instanceof Error ? error.message : String(error));
+    console.error("❌ Failed to read schemas:", error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }

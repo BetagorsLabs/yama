@@ -2,19 +2,19 @@ export function helloYamaCore() {
   return "Yama core online";
 }
 
-// Export model validation
+// Export schema validation
 export {
-  ModelValidator,
-  createModelValidator,
-  modelToJsonSchema,
+  SchemaValidator,
+  createSchemaValidator,
+  schemaToJsonSchema,
   fieldToJsonSchema,
-  type ModelField,
-  type ModelDefinition,
-  type YamaModels,
+  type SchemaField,
+  type SchemaDefinition,
+  type YamaSchemas,
   type ValidationResult
-} from "./models.js";
+} from "./schemas.js";
 
-// Export auth types from models
+// Export auth types from schemas
 export {
   type AuthProvider,
   type AuthConfig,
@@ -23,7 +23,7 @@ export {
   type AuthProviderType,
   type JwtAuthProvider,
   type ApiKeyAuthProvider,
-} from "./models.js";
+} from "./schemas.js";
 
 // Export auth functions
 export {

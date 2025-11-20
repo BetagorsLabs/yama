@@ -38,16 +38,16 @@ export async function generateCommand(options: GenerateOptions): Promise<void> {
 
 export async function generateOnce(configPath: string, options: GenerateOptions): Promise<void> {
   try {
-    const config = readYamaConfig(configPath) as { models?: unknown; endpoints?: unknown };
+    const config = readYamaConfig(configPath) as { schemas?: unknown; endpoints?: unknown };
     const configDir = getConfigDir(configPath);
     const projectType = detectProjectType(configDir);
 
     let typesOutput: string | undefined;
 
     // Generate types
-    if (!options.sdkOnly && config.models) {
+    if (!options.sdkOnly && config.schemas) {
       typesOutput = getTypesOutputPath(configPath, options);
-      await generateTypesFile(config.models, typesOutput, configDir);
+      await generateTypesFile(config.schemas, typesOutput, configDir);
     }
 
     // Generate SDK
@@ -117,12 +117,12 @@ function getSdkOutputPath(configPath: string, options: GenerateOptions): string 
 }
 
 async function generateTypesFile(
-  models: unknown,
+  schemas: unknown,
   outputPath: string,
   configDir: string
 ): Promise<void> {
   try {
-    const types = generateTypes(models as Parameters<typeof generateTypes>[0]);
+    const types = generateTypes(schemas as Parameters<typeof generateTypes>[0]);
     const absoluteOutputPath = join(configDir, outputPath);
     const outputDir = dirname(absoluteOutputPath);
     
@@ -137,7 +137,7 @@ async function generateTypesFile(
 }
 
 async function generateSdkFile(
-  config: { models?: unknown; endpoints?: unknown },
+  config: { schemas?: unknown; endpoints?: unknown },
   outputPath: string,
   configDir: string,
   typesOutputPath?: string,

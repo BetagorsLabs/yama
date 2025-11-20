@@ -7,7 +7,7 @@ import { generateCommand } from "./commands/generate.js";
 import { validateCommand } from "./commands/validate.js";
 import { configCommand } from "./commands/config.js";
 import { endpointsCommand } from "./commands/endpoints.js";
-import { modelsCommand } from "./commands/models.js";
+import { schemasCommand } from "./commands/schemas.js";
 import { docsCommand } from "./commands/docs.js";
 
 const program = new Command();
@@ -94,10 +94,10 @@ program
   .action(endpointsCommand);
 
 program
-  .command("models")
-  .description("List all models")
+  .command("schemas")
+  .description("List all schemas")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
-  .action(modelsCommand);
+  .action(schemasCommand);
 
 program
   .command("docs")

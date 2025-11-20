@@ -1,5 +1,5 @@
 import Fastify, { FastifyRequest, FastifyReply } from "fastify";
-import { helloYamaCore, createModelValidator, type YamaModels, type ValidationResult, type ModelField, fieldToJsonSchema, type AuthConfig, type EndpointAuth, authenticateAndAuthorize } from "@yama/core";
+import { helloYamaCore, createSchemaValidator, type YamaSchemas, type ValidationResult, type SchemaField, fieldToJsonSchema, type AuthConfig, type EndpointAuth, authenticateAndAuthorize } from "@yama/core";
 import { generateOpenAPI } from "@yama/docs-generator";
 import yaml from "js-yaml";
 import { readFileSync, readdirSync, existsSync } from "fs";
@@ -9,18 +9,18 @@ import { pathToFileURL } from "url";
 interface YamaConfig {
   name?: string;
   version?: string;
-  models?: YamaModels;
+  schemas?: YamaSchemas;
   auth?: AuthConfig;
   endpoints?: Array<{
     path: string;
     method: string;
     handler?: string; // Optional - if not provided, uses default handler
     description?: string;
-    params?: Record<string, ModelField>;
+    params?: Record<string, SchemaField>;
     body?: {
       type: string;
     };
-    query?: Record<string, ModelField>;
+    query?: Record<string, SchemaField>;
     response?: {
       type: string;
     };
@@ -90,15 +90,15 @@ async function loadHandlers(handlersDir: string): Promise<Record<string, Handler
  * Build a JSON schema for query parameter validation
  */
 function buildQuerySchema(
-  queryParams: Record<string, ModelField>,
-  models?: YamaModels
+  queryParams: Record<string, SchemaField>,
+  schemas?: YamaSchemas
 ): Record<string, unknown> {
   const properties: Record<string, unknown> = {};
   const required: string[] = [];
 
   for (const [paramName, paramField] of Object.entries(queryParams)) {
     // Convert the field directly to JSON schema
-    properties[paramName] = fieldToJsonSchema(paramField, paramName, models);
+    properties[paramName] = fieldToJsonSchema(paramField, paramName, schemas);
     
     if (paramField.required) {
       required.push(paramName);
@@ -123,8 +123,8 @@ function buildQuerySchema(
  */
 function coerceParams(
   params: Record<string, unknown>,
-  paramDefs: Record<string, ModelField>,
-  models?: YamaModels
+  paramDefs: Record<string, SchemaField>,
+  schemas?: YamaSchemas
 ): Record<string, unknown> {
   const coerced: Record<string, unknown> = {};
 
@@ -149,7 +149,7 @@ function coerceParams(
     }
 
     const type = paramDef.$ref ? 
-      (models?.[paramDef.$ref]?.fields ? "object" : undefined) : 
+      (schemas?.[paramDef.$ref]?.fields ? "object" : undefined) : 
       paramDef.type;
 
     switch (type) {
@@ -203,7 +203,7 @@ function registerRoutes(
   app: ReturnType<typeof Fastify>,
   config: YamaConfig,
   handlers: Record<string, HandlerFunction>,
-  validator: ReturnType<typeof createModelValidator>
+  validator: ReturnType<typeof createSchemaValidator>
 ) {
   if (!config.endpoints) {
     return;
@@ -272,10 +272,10 @@ function registerRoutes(
         // Validate and coerce path parameters if specified
         if (params && Object.keys(params).length > 0) {
           const pathParams = request.params as Record<string, unknown>;
-          const coercedParams = coerceParams(pathParams, params, config.models);
+          const coercedParams = coerceParams(pathParams, params, config.schemas);
           
           // Build a temporary schema for path parameter validation
-          const paramsSchema = buildQuerySchema(params, config.models);
+          const paramsSchema = buildQuerySchema(params, config.schemas);
           const paramsValidation = validator.validateSchema(paramsSchema, coercedParams);
           
           if (!paramsValidation.valid) {
@@ -294,10 +294,10 @@ function registerRoutes(
         // Validate and coerce query parameters if specified
         if (query && Object.keys(query).length > 0) {
           const queryParams = request.query as Record<string, unknown>;
-          const coercedQuery = coerceParams(queryParams, query, config.models);
+          const coercedQuery = coerceParams(queryParams, query, config.schemas);
           
           // Build a temporary schema for query validation
-          const querySchema = buildQuerySchema(query, config.models);
+          const querySchema = buildQuerySchema(query, config.schemas);
           const queryValidation = validator.validateSchema(querySchema, coercedQuery);
           
           if (!queryValidation.valid) {
@@ -383,8 +383,8 @@ export async function startYamaNodeRuntime(
 ): Promise<YamaServer> {
   const app = Fastify();
 
-  // Create model validator
-  const validator = createModelValidator();
+  // Create schema validator
+  const validator = createSchemaValidator();
 
   // Load and parse YAML config if provided
   let config: YamaConfig | null = null;
@@ -396,10 +396,10 @@ export async function startYamaNodeRuntime(
       config = yaml.load(configFile) as YamaConfig;
       console.log("✅ Loaded YAML config");
 
-      // Register models for validation
-      if (config.models) {
-        validator.registerModels(config.models);
-        console.log(`✅ Registered ${Object.keys(config.models).length} model(s) for validation`);
+      // Register schemas for validation
+      if (config.schemas) {
+        validator.registerSchemas(config.schemas);
+        console.log(`✅ Registered ${Object.keys(config.schemas).length} schema(s) for validation`);
       }
 
       // Determine handlers directory (src/handlers relative to YAML file)
