@@ -1,18 +1,23 @@
 import { existsSync } from "fs";
 import { dirname, join } from "path";
-import { startYamaNodeRuntime } from "@yama/runtime-node";
+import { startYamaNodeRuntime, type YamaServer } from "@yama/runtime-node";
 import type { FSWatcher } from "chokidar";
 import chokidar from "chokidar";
 import { findYamaConfig } from "../utils/project-detection.js";
+import { generateOnce } from "./generate.js";
 
 interface DevOptions {
   port?: string;
   watch?: boolean;
   config?: string;
+  generate?: boolean;
 }
 
-let serverProcess: { stop: () => Promise<void> } | null = null;
+let serverInstance: YamaServer | null = null;
 let watcher: FSWatcher | null = null;
+let handlerWatcher: FSWatcher | null = null;
+let currentPort: number = 4000;
+let currentConfigPath: string = "";
 
 export async function devCommand(options: DevOptions): Promise<void> {
   const port = parseInt(options.port || "4000", 10);
@@ -21,14 +26,30 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
   if (!existsSync(configPath)) {
     console.error(`❌ Config file not found: ${configPath}`);
-    console.error("   Run 'yama init' to create a yama.yaml file");
+    console.error("\n💡 Quick fix:");
+    console.error("   Run: yama init");
+    console.error("   Or:  yama setup");
     process.exit(1);
   }
+
+  currentPort = port;
+  currentConfigPath = configPath;
 
   console.log(`🚀 Starting Yama dev server...\n`);
   console.log(`   Config: ${configPath}`);
   console.log(`   Port: ${port}`);
   console.log(`   Watch mode: ${watch ? "enabled" : "disabled"}\n`);
+
+  // Auto-generate SDK/types if requested or in watch mode
+  if (options.generate || watch) {
+    try {
+      console.log("📦 Generating SDK and types...");
+      await generateOnce(configPath, {});
+      console.log("");
+    } catch (error) {
+      console.warn("⚠️  Generation failed, continuing anyway:", error instanceof Error ? error.message : String(error));
+    }
+  }
 
   // Start the server
   await startServer(port, configPath);
@@ -53,12 +74,21 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 async function startServer(port: number, configPath: string): Promise<void> {
   try {
-    // Import and start the runtime
-    // Note: This will need to be adapted based on how the runtime exports its start function
-    await startYamaNodeRuntime(port, configPath);
-    console.log(`✅ Server started on http://localhost:${port}\n`);
+    serverInstance = await startYamaNodeRuntime(port, configPath);
+    
+    // Enhanced startup messages
+    console.log(`\n✅ Yama dev server ready!`);
+    console.log(`📝 Edit yama.yaml to update API`);
+    console.log(`🔄 Changes auto-sync`);
+    console.log(`🌐 Server: http://localhost:${port}`);
+    console.log(`   Health: http://localhost:${port}/health`);
+    console.log(`   Config: http://localhost:${port}/config\n`);
   } catch (error) {
     console.error("❌ Failed to start server:", error instanceof Error ? error.message : String(error));
+    if (error instanceof Error && error.message.includes("EADDRINUSE")) {
+      console.error("\n💡 Port is already in use. Try:");
+      console.error(`   yama dev --port ${port + 1}`);
+    }
     process.exit(1);
   }
 }
@@ -76,20 +106,31 @@ function setupWatchMode(configPath: string): void {
   });
 
   watcher.on("change", async (path) => {
-    console.log(`\n📝 ${path} changed, restarting server...`);
-    await restartServer(configPath);
+    console.log(`\n📝 ${path} changed...`);
+    
+    try {
+      // 1. Regenerate SDK/types
+      console.log("   🔄 Regenerating SDK and types...");
+      await generateOnce(configPath, {});
+      
+      // 2. Restart server
+      await restartServer();
+    } catch (error) {
+      console.error("   ❌ Failed to reload:", error instanceof Error ? error.message : String(error));
+      console.error("   💡 Fix the error and save again, or restart manually");
+    }
   });
 
   // Watch handlers directory if it exists
   if (existsSync(handlersDir)) {
-    const handlerWatcher = chokidar.watch(handlersDir, {
+    handlerWatcher = chokidar.watch(handlersDir, {
       ignoreInitial: true,
       persistent: true
     });
 
     handlerWatcher.on("change", async (changedPath: string) => {
-      console.log(`\n📝 Handler changed: ${changedPath}, restarting server...`);
-      await restartServer(configPath);
+      console.log(`\n📝 Handler changed: ${changedPath}`);
+      await restartServer();
     });
   }
 
@@ -99,18 +140,42 @@ function setupWatchMode(configPath: string): void {
   }
 }
 
-async function restartServer(configPath: string): Promise<void> {
-  // Note: The current runtime doesn't support hot reloading
-  // This would require refactoring the runtime to support it
-  // For now, we'll just log that a restart is needed
-  console.log("   ⚠️  Hot reload not yet implemented. Please restart manually.");
-  console.log("   💡 Tip: Stop the server (Ctrl+C) and run 'yama dev' again");
+async function restartServer(): Promise<void> {
+  if (!serverInstance) {
+    console.log("   ⚠️  No server instance to restart");
+    return;
+  }
+
+  try {
+    // Stop existing server
+    console.log("   🛑 Stopping server...");
+    await serverInstance.stop();
+    serverInstance = null;
+
+    // Small delay to ensure port is released
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Start new server
+    console.log("   🚀 Restarting server...");
+    await startServer(currentPort, currentConfigPath);
+  } catch (error) {
+    console.error("   ❌ Failed to restart server:", error instanceof Error ? error.message : String(error));
+    console.error("   💡 Please restart manually with Ctrl+C and run 'yama dev' again");
+  }
 }
 
 async function cleanup(): Promise<void> {
   if (watcher) {
     await watcher.close();
+    watcher = null;
   }
-  // Cleanup server if needed
+  if (handlerWatcher) {
+    await handlerWatcher.close();
+    handlerWatcher = null;
+  }
+  if (serverInstance) {
+    await serverInstance.stop();
+    serverInstance = null;
+  }
 }
 

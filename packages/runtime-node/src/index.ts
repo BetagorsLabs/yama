@@ -307,10 +307,15 @@ function registerRoutes(
   }
 }
 
+export interface YamaServer {
+  stop: () => Promise<void>;
+  port: number;
+}
+
 export async function startYamaNodeRuntime(
   port = 3000,
   yamlConfigPath?: string
-) {
+): Promise<YamaServer> {
   const app = Fastify();
 
   // Create model validator
@@ -359,5 +364,12 @@ export async function startYamaNodeRuntime(
 
   await app.listen({ port, host: "0.0.0.0" });
   console.log(`Yama runtime listening on http://localhost:${port}`);
+
+  return {
+    stop: async () => {
+      await app.close();
+    },
+    port
+  };
 }
 

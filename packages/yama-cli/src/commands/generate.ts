@@ -36,7 +36,7 @@ export async function generateCommand(options: GenerateOptions): Promise<void> {
   }
 }
 
-async function generateOnce(configPath: string, options: GenerateOptions): Promise<void> {
+export async function generateOnce(configPath: string, options: GenerateOptions): Promise<void> {
   try {
     const config = readYamaConfig(configPath) as { models?: unknown; endpoints?: unknown };
     const configDir = getConfigDir(configPath);

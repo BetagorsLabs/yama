@@ -37,6 +37,7 @@ program
   .option("-p, --port <port>", "Server port", "4000")
   .option("--no-watch", "Disable watch mode")
   .option("--config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("--generate", "Auto-generate SDK and types on startup and changes")
   .action(devCommand);
 
 // Generation
