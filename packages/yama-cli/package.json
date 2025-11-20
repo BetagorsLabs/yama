@@ -1,0 +1,34 @@
+{
+  "name": "yama-cli",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Global CLI tool for Yama - API framework",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "yama": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -w -p tsconfig.build.json",
+    "lint": "echo \"no lint yet\"",
+    "test": "echo \"no tests yet\"",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@yama/core": "workspace:*",
+    "@yama/runtime-node": "workspace:*",
+    "commander": "^12.0.0",
+    "chokidar": "^4.0.0",
+    "js-yaml": "^4.1.1"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "@types/js-yaml": "^4.0.9"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
+
