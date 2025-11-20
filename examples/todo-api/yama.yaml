@@ -1,6 +1,13 @@
 name: todo-api
 version: 1.0.0
 
+auth:
+  providers:
+    - type: jwt
+      secret: ${JWT_SECRET}
+    - type: api-key
+      header: X-API-Key
+
 models:
   Todo:
     fields:
@@ -47,6 +54,9 @@ endpoints:
     method: GET
     handler: getTodos
     description: Get all todos
+    auth:
+      required: true
+      roles: [user, admin]
     query:
       completed:
         type: boolean

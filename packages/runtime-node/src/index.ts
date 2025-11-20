@@ -1,5 +1,5 @@
 import Fastify, { FastifyRequest, FastifyReply } from "fastify";
-import { helloYamaCore, createModelValidator, type YamaModels, type ValidationResult, type ModelField, fieldToJsonSchema } from "@yama/core";
+import { helloYamaCore, createModelValidator, type YamaModels, type ValidationResult, type ModelField, fieldToJsonSchema, type AuthConfig, type EndpointAuth, authenticateAndAuthorize } from "@yama/core";
 import { generateOpenAPI } from "@yama/docs-generator";
 import yaml from "js-yaml";
 import { readFileSync, readdirSync, existsSync } from "fs";
@@ -10,6 +10,7 @@ interface YamaConfig {
   name?: string;
   version?: string;
   models?: YamaModels;
+  auth?: AuthConfig;
   endpoints?: Array<{
     path: string;
     method: string;
@@ -23,6 +24,7 @@ interface YamaConfig {
     response?: {
       type: string;
     };
+    auth?: EndpointAuth;
   }>;
 }
 
@@ -208,6 +210,32 @@ function registerRoutes(
     // Register the route with Fastify
     app[methodLower](path, async (request: FastifyRequest, reply: FastifyReply) => {
       try {
+        // Authenticate and authorize request
+        if (config.auth || endpoint.auth) {
+          const headers: Record<string, string | undefined> = {};
+          // Collect all headers (Fastify lowercases header names)
+          for (const [key, value] of Object.entries(request.headers)) {
+            headers[key.toLowerCase()] = Array.isArray(value) ? value[0] : value;
+          }
+
+          const authResult = await authenticateAndAuthorize(
+            headers,
+            config.auth,
+            endpoint.auth
+          );
+
+          if (!authResult.authorized) {
+            reply.status(401).send({
+              error: "Unauthorized",
+              message: authResult.error || "Authentication or authorization failed",
+            });
+            return;
+          }
+
+          // Attach auth context to request for handlers to use
+          (request as FastifyRequest & { auth: typeof authResult.context }).auth = authResult.context;
+        }
+
         // Validate and coerce path parameters if specified
         if (params && Object.keys(params).length > 0) {
           const pathParams = request.params as Record<string, unknown>;
@@ -303,7 +331,7 @@ function registerRoutes(
     });
 
     console.log(
-      `✅ Registered route: ${method.toUpperCase()} ${path} -> ${handlerName}${description ? ` (${description})` : ""}${params ? ` [validates path params]` : ""}${query ? ` [validates query params]` : ""}${body?.type ? ` [validates body: ${body.type}]` : ""}${response?.type ? ` [validates response: ${response.type}]` : ""}`
+      `✅ Registered route: ${method.toUpperCase()} ${path} -> ${handlerName}${description ? ` (${description})` : ""}${params ? ` [validates path params]` : ""}${query ? ` [validates query params]` : ""}${body?.type ? ` [validates body: ${body.type}]` : ""}${response?.type ? ` [validates response: ${response.type}]` : ""}${endpoint.auth ? ` [auth: ${endpoint.auth.required !== false ? "required" : "optional"}${endpoint.auth.roles ? `, roles: ${endpoint.auth.roles.join(", ")}` : ""}]` : ""}`
     );
   }
 }

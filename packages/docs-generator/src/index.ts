@@ -28,12 +28,23 @@ export interface EndpointDefinition {
   response?: {
     type?: string;
   };
+  auth?: {
+    required?: boolean;
+    roles?: string[];
+  };
 }
 
 export interface YamaConfig {
   name?: string;
   version?: string;
   models?: YamaModels;
+  auth?: {
+    providers?: Array<{
+      type: "jwt" | "api-key";
+      secret?: string;
+      header?: string;
+    }>;
+  };
   endpoints?: EndpointDefinition[];
 }
 
@@ -70,11 +81,20 @@ export interface OpenAPISpec {
           };
         };
       }>;
+      security?: Array<Record<string, string[]>>;
     };
   }>;
   components: {
     schemas: Record<string, Record<string, unknown>>;
+    securitySchemes?: Record<string, {
+      type: string;
+      scheme?: string;
+      bearerFormat?: string;
+      name?: string;
+      in?: string;
+    }>;
   };
+  security?: Array<Record<string, string[]>>;
 }
 
 /**
@@ -144,7 +164,8 @@ function extractPathParams(path: string): string[] {
  */
 function endpointToOpenAPIOperation(
   endpoint: EndpointDefinition,
-  models?: YamaModels
+  models?: YamaModels,
+  authConfig?: YamaConfig["auth"]
 ): OpenAPISpec["paths"][string][string] {
   const operation: OpenAPISpec["paths"][string][string] = {
     responses: {}
@@ -272,6 +293,24 @@ function endpointToOpenAPIOperation(
 
   operation.responses = responses;
 
+  // Add security requirements if auth is required
+  if (endpoint.auth && endpoint.auth.required !== false && authConfig?.providers) {
+    const security: Array<Record<string, string[]>> = [];
+    
+    for (const provider of authConfig.providers) {
+      if (provider.type === "jwt") {
+        security.push({ bearerAuth: [] });
+      } else if (provider.type === "api-key") {
+        const schemeName = provider.header?.toLowerCase().replace(/[^a-z0-9]/g, "") || "apikey";
+        security.push({ [schemeName]: [] });
+      }
+    }
+    
+    if (security.length > 0) {
+      operation.security = security;
+    }
+  }
+
   return operation;
 }
 
@@ -314,7 +353,29 @@ export function generateOpenAPI(config: YamaConfig): OpenAPISpec {
       }
 
       const method = endpoint.method.toLowerCase();
-      spec.paths[openAPIPath][method] = endpointToOpenAPIOperation(endpoint, config.models);
+      spec.paths[openAPIPath][method] = endpointToOpenAPIOperation(endpoint, config.models, config.auth);
+    }
+  }
+
+  // Add security schemes to components
+  if (config.auth?.providers) {
+    spec.components.securitySchemes = {};
+    
+    for (const provider of config.auth.providers) {
+      if (provider.type === "jwt") {
+        spec.components.securitySchemes.bearerAuth = {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT"
+        };
+      } else if (provider.type === "api-key") {
+        const schemeName = provider.header?.toLowerCase().replace(/[^a-z0-9]/g, "") || "apikey";
+        spec.components.securitySchemes[schemeName] = {
+          type: "apiKey",
+          name: provider.header || "X-API-Key",
+          in: "header"
+        };
+      }
     }
   }
 

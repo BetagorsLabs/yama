@@ -24,11 +24,24 @@ export interface EndpointDefinition {
   response?: {
     type?: string;
   };
+  auth?: {
+    required?: boolean;
+    roles?: string[];
+  };
+}
+
+export interface AuthProvider {
+  type: "jwt" | "api-key";
+  secret?: string;
+  header?: string;
 }
 
 export interface YamaConfig {
   name?: string;
   version?: string;
+  auth?: {
+    providers?: AuthProvider[];
+  };
   endpoints?: EndpointDefinition[];
 }
 
@@ -112,7 +125,10 @@ function generateParamsType(params?: Record<string, unknown>): string {
  */
 function generateEndpointMethod(
   endpoint: EndpointDefinition,
-  typesImportPath: string
+  typesImportPath: string,
+  hasJwt: boolean,
+  hasApiKey: boolean,
+  apiKeyHeader: string
 ): string {
   const methodName = pathToMethodName(endpoint.path, endpoint.method, endpoint.handler);
   const pathParams = extractPathParams(endpoint.path);
@@ -199,12 +215,23 @@ function generateEndpointMethod(
   const methodUpper = endpoint.method.toUpperCase();
   const fetchBody = hasBody ? "body: bodyStr," : "";
   
+  // Build headers with auth
+  const needsAuth = endpoint.auth?.required !== false;
+  let headersCode = `      headers: {\n        "Content-Type": "application/json",`;
+  if (needsAuth && hasJwt) {
+    headersCode += `\n        ...(this.jwtToken ? { "Authorization": \`Bearer \${this.jwtToken}\` } : {}),`;
+  }
+  if (needsAuth && hasApiKey) {
+    headersCode += `\n        ...(this.apiKey ? { "${apiKeyHeader}": this.apiKey } : {}),`;
+  }
+  headersCode += `\n        ...options?.headers,\n      },`;
+  
   // Handle response based on type
   let returnCode = "";
   if (responseType === "void") {
-    returnCode = `\n    const response = await fetch(url, {\n      method: "${methodUpper}",${fetchBody ? `\n      ${fetchBody}` : ""}\n      headers: {\n        "Content-Type": "application/json",\n        ...options?.headers,\n      },\n      ...options,\n    });\n\n    if (!response.ok) {\n      throw new Error(\`HTTP error! status: \${response.status}\`);\n    }`;
+    returnCode = `\n    const response = await fetch(url, {\n      method: "${methodUpper}",${fetchBody ? `\n      ${fetchBody}` : ""}\n${headersCode}\n      ...options,\n    });\n\n    if (!response.ok) {\n      throw new Error(\`HTTP error! status: \${response.status}\`);\n    }`;
   } else {
-    returnCode = `\n    const response = await fetch(url, {\n      method: "${methodUpper}",${fetchBody ? `\n      ${fetchBody}` : ""}\n      headers: {\n        "Content-Type": "application/json",\n        ...options?.headers,\n      },\n      ...options,\n    });\n\n    if (!response.ok) {\n      throw new Error(\`HTTP error! status: \${response.status}\`);\n    }\n\n    return await response.json() as ${responseType};`;
+    returnCode = `\n    const response = await fetch(url, {\n      method: "${methodUpper}",${fetchBody ? `\n      ${fetchBody}` : ""}\n${headersCode}\n      ...options,\n    });\n\n    if (!response.ok) {\n      throw new Error(\`HTTP error! status: \${response.status}\`);\n    }\n\n    return await response.json() as ${responseType};`;
   }
 
   // Build JSDoc comment
@@ -255,9 +282,17 @@ import type { ${Array.from(typeNames).join(", ")} } from "${typesImportPath}";
 
 `;
 
+  // Check if auth is configured
+  const hasAuth = config.auth?.providers && config.auth.providers.length > 0;
+  const hasJwt = Boolean(hasAuth && config.auth?.providers?.some(p => p.type === "jwt"));
+  const hasApiKey = Boolean(hasAuth && config.auth?.providers?.some(p => p.type === "api-key"));
+  const apiKeyHeader = hasApiKey ? config.auth?.providers?.find(p => p.type === "api-key")?.header || "X-API-Key" : "X-API-Key";
+
   // Generate client class
   const clientClass = `export class YamaClient {
   private baseUrl: string;
+${hasJwt ? `  private jwtToken: string | null = null;` : ""}
+${hasApiKey ? `  private apiKey: string | null = null;` : ""}
 
   constructor(baseUrl: string = "${baseUrl}") {
     this.baseUrl = baseUrl.replace(/\\/$/, "");
@@ -269,8 +304,36 @@ import type { ${Array.from(typeNames).join(", ")} } from "${typesImportPath}";
   setBaseUrl(baseUrl: string): void {
     this.baseUrl = baseUrl.replace(/\\/$/, "");
   }
+${hasJwt ? `
+  /**
+   * Set JWT token for authentication
+   */
+  setToken(token: string): void {
+    this.jwtToken = token;
+  }
 
-${endpoints.map(endpoint => generateEndpointMethod(endpoint, typesImportPath)).join("\n\n")}
+  /**
+   * Clear JWT token
+   */
+  clearToken(): void {
+    this.jwtToken = null;
+  }` : ""}
+${hasApiKey ? `
+  /**
+   * Set API key for authentication
+   */
+  setApiKey(apiKey: string): void {
+    this.apiKey = apiKey;
+  }
+
+  /**
+   * Clear API key
+   */
+  clearApiKey(): void {
+    this.apiKey = null;
+  }` : ""}
+
+${endpoints.map(endpoint => generateEndpointMethod(endpoint, typesImportPath, hasJwt, hasApiKey, apiKeyHeader)).join("\n\n")}
 }
 
 /**

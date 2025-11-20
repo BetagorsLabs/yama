@@ -14,6 +14,24 @@ export {
   type ValidationResult
 } from "./models.js";
 
+// Export auth types from models
+export {
+  type AuthProvider,
+  type AuthConfig,
+  type EndpointAuth,
+  type AuthContext,
+  type AuthProviderType,
+  type JwtAuthProvider,
+  type ApiKeyAuthProvider,
+} from "./models.js";
+
+// Export auth functions
+export {
+  authenticateRequest,
+  authorizeRequest,
+  authenticateAndAuthorize,
+} from "./auth.js";
+
 // Export type generation
 export { generateTypes } from "./typegen.js";
 

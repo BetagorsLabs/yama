@@ -236,3 +236,44 @@ export function createModelValidator(): ModelValidator {
   return new ModelValidator();
 }
 
+// Authentication/Authorization types
+export type AuthProviderType = "jwt" | "api-key";
+
+export interface JwtAuthProvider {
+  type: "jwt";
+  secret: string;
+  algorithm?: string;
+  issuer?: string;
+  audience?: string;
+}
+
+export interface ApiKeyAuthProvider {
+  type: "api-key";
+  header: string;
+  validate?: (apiKey: string) => Promise<boolean> | boolean;
+}
+
+export type AuthProvider = JwtAuthProvider | ApiKeyAuthProvider;
+
+export interface AuthConfig {
+  providers: AuthProvider[];
+}
+
+export interface EndpointAuth {
+  required?: boolean;
+  roles?: string[];
+  provider?: string; // Provider type or name to use
+}
+
+export interface AuthContext {
+  authenticated: boolean;
+  user?: {
+    id?: string;
+    email?: string;
+    roles?: string[];
+    [key: string]: unknown;
+  };
+  provider?: string;
+  token?: string;
+}
+
