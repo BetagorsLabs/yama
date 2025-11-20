@@ -78,6 +78,15 @@ importers:
         specifier: ^5.0.0
         version: 5.0.10
 
+  packages/sdk-ts:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.25
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+
   packages/yama-cli:
     dependencies:
       '@yama/core':
@@ -86,6 +95,9 @@ importers:
       '@yama/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
+      '@yama/sdk-ts':
+        specifier: workspace:*
+        version: link:../sdk-ts
       chokidar:
         specifier: ^4.0.0
         version: 4.0.3

@@ -1,0 +1,291 @@
+/**
+ * SDK Generator for Yama
+ * Generates TypeScript SDK client from yama.yaml endpoint definitions
+ */
+
+export interface EndpointDefinition {
+  path: string;
+  method: string;
+  handler?: string;
+  description?: string;
+  query?: Record<string, {
+    type?: string;
+    required?: boolean;
+    min?: number;
+    max?: number;
+  }>;
+  params?: Record<string, {
+    type?: string;
+    required?: boolean;
+  }>;
+  body?: {
+    type?: string;
+  };
+  response?: {
+    type?: string;
+  };
+}
+
+export interface YamaConfig {
+  name?: string;
+  version?: string;
+  endpoints?: EndpointDefinition[];
+}
+
+export interface GenerateSDKOptions {
+  baseUrl?: string;
+  typesImportPath?: string;
+  framework?: string;
+}
+
+/**
+ * Convert endpoint path to method name
+ * e.g., "/todos/:id" -> "getTodoById"
+ */
+function pathToMethodName(path: string, method: string, handler?: string): string {
+  // Use handler name if available (e.g., "getTodoById" -> "getTodoById")
+  if (handler) {
+    // Convert camelCase handler to camelCase method name
+    return handler;
+  }
+
+  // Otherwise, generate from path and method
+  const parts = path
+    .split("/")
+    .filter(p => p && !p.startsWith(":"))
+    .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase());
+  
+  const methodPrefix = method.toLowerCase();
+  const methodName = methodPrefix + parts.join("");
+  
+  // Convert to camelCase
+  return methodName.charAt(0).toLowerCase() + methodName.slice(1);
+}
+
+/**
+ * Extract path parameters from endpoint path
+ */
+function extractPathParams(path: string): string[] {
+  const matches = path.matchAll(/:(\w+)/g);
+  return Array.from(matches, m => m[1]);
+}
+
+/**
+ * Generate TypeScript type for query parameters
+ */
+function generateQueryType(query?: Record<string, unknown>): string {
+  if (!query || Object.keys(query).length === 0) {
+    return "Record<string, never>";
+  }
+
+  const props: string[] = [];
+  for (const [key, def] of Object.entries(query)) {
+    const defObj = def as { type?: string; required?: boolean };
+    const optional = defObj.required ? "" : "?";
+    const type = defObj.type === "integer" ? "number" : (defObj.type || "unknown");
+    props.push(`  ${key}${optional}: ${type};`);
+  }
+
+  return `{\n${props.join("\n")}\n}`;
+}
+
+/**
+ * Generate TypeScript type for path parameters
+ */
+function generateParamsType(params?: Record<string, unknown>): string {
+  if (!params || Object.keys(params).length === 0) {
+    return "Record<string, never>";
+  }
+
+  const props: string[] = [];
+  for (const [key, def] of Object.entries(params)) {
+    const defObj = def as { type?: string; required?: boolean };
+    const type = defObj.type === "integer" ? "number" : (defObj.type || "string");
+    props.push(`  ${key}: ${type};`);
+  }
+
+  return `{\n${props.join("\n")}\n}`;
+}
+
+/**
+ * Generate method signature and implementation for an endpoint
+ */
+function generateEndpointMethod(
+  endpoint: EndpointDefinition,
+  typesImportPath: string
+): string {
+  const methodName = pathToMethodName(endpoint.path, endpoint.method, endpoint.handler);
+  const pathParams = extractPathParams(endpoint.path);
+  const hasPathParams = pathParams.length > 0;
+  const hasQuery = endpoint.query && Object.keys(endpoint.query).length > 0;
+  const hasBody = endpoint.body !== undefined;
+  // For DELETE without response, use void; otherwise use the response type or unknown
+  const responseType = endpoint.response?.type || (endpoint.method === "DELETE" ? "void" : "unknown");
+
+  // Build method parameters
+  const params: string[] = [];
+  
+  if (hasPathParams) {
+    const paramsType = generateParamsType(endpoint.params);
+    params.push(`params: ${paramsType}`);
+  }
+  
+  if (hasQuery) {
+    const queryType = generateQueryType(endpoint.query);
+    params.push(`query${hasPathParams ? "?" : ""}: ${queryType}`);
+  }
+  
+  if (hasBody) {
+    const bodyType = endpoint.body?.type || "unknown";
+    params.push(`body: ${bodyType}`);
+  }
+
+  // Build options parameter if needed
+  const needsOptions = !hasPathParams && !hasQuery && !hasBody;
+  if (needsOptions) {
+    params.push("options?: RequestInit");
+  } else {
+    params.push("options?: Omit<RequestInit, 'method' | 'body'>");
+  }
+
+  // Format parameters with proper line breaks for readability
+  let paramsStr = "";
+  if (params.length > 0) {
+    if (params.length === 1) {
+      paramsStr = params[0];
+    } else {
+      paramsStr = params.join(",\n    ");
+    }
+  }
+
+  // Build URL construction
+  let urlCode = `    let url = \`\${this.baseUrl}${endpoint.path}\`;`;
+  
+  if (hasPathParams) {
+    for (const param of pathParams) {
+      urlCode += `\n    url = url.replace(/:${param}/g, String(params.${param}));`;
+    }
+  }
+
+  // Build query string construction
+  let queryCode = "";
+  if (hasQuery) {
+    queryCode = `\n    const queryParams = new URLSearchParams();\n`;
+    queryCode += `    if (query) {\n`;
+    for (const [key, def] of Object.entries(endpoint.query || {})) {
+      const defObj = def as { required?: boolean };
+      if (defObj.required) {
+        queryCode += `      queryParams.append("${key}", String(query.${key}));\n`;
+      } else {
+        queryCode += `      if (query.${key} !== undefined) {\n`;
+        queryCode += `        queryParams.append("${key}", String(query.${key}));\n`;
+        queryCode += `      }\n`;
+      }
+    }
+    queryCode += `    }\n`;
+    queryCode += `    const queryString = queryParams.toString();\n`;
+    queryCode += `    if (queryString) {\n`;
+    queryCode += `      url += \`?\${queryString}\`;\n`;
+    queryCode += `    }\n`;
+  }
+
+  // Build body code
+  let bodyCode = "";
+  if (hasBody) {
+    bodyCode = `\n    const bodyStr = JSON.stringify(body);`;
+  }
+
+  // Build fetch call
+  const methodUpper = endpoint.method.toUpperCase();
+  const fetchBody = hasBody ? "body: bodyStr," : "";
+  
+  // Handle response based on type
+  let returnCode = "";
+  if (responseType === "void") {
+    returnCode = `\n    const response = await fetch(url, {\n      method: "${methodUpper}",${fetchBody ? `\n      ${fetchBody}` : ""}\n      headers: {\n        "Content-Type": "application/json",\n        ...options?.headers,\n      },\n      ...options,\n    });\n\n    if (!response.ok) {\n      throw new Error(\`HTTP error! status: \${response.status}\`);\n    }`;
+  } else {
+    returnCode = `\n    const response = await fetch(url, {\n      method: "${methodUpper}",${fetchBody ? `\n      ${fetchBody}` : ""}\n      headers: {\n        "Content-Type": "application/json",\n        ...options?.headers,\n      },\n      ...options,\n    });\n\n    if (!response.ok) {\n      throw new Error(\`HTTP error! status: \${response.status}\`);\n    }\n\n    return await response.json() as ${responseType};`;
+  }
+
+  // Build JSDoc comment
+  const jsdoc = endpoint.description 
+    ? `  /**\n   * ${endpoint.description}\n   */\n`
+    : "";
+
+  // Format method signature with proper line breaks
+  const methodSignature = params.length > 1
+    ? `  async ${methodName}(\n    ${paramsStr}\n  ): Promise<${responseType}> {`
+    : `  async ${methodName}(${paramsStr}): Promise<${responseType}> {`;
+
+  return `${jsdoc}${methodSignature}${urlCode}${queryCode}${bodyCode}${returnCode}\n  }`;
+}
+
+/**
+ * Generate SDK client code from Yama config
+ */
+export function generateSDK(
+  config: YamaConfig,
+  options: GenerateSDKOptions = {}
+): string {
+  const baseUrl = options.baseUrl || "http://localhost:3000";
+  const typesImportPath = options.typesImportPath || "./types";
+  const endpoints = config.endpoints || [];
+
+  // Collect all type names used
+  const typeNames = new Set<string>();
+  for (const endpoint of endpoints) {
+    if (endpoint.body?.type) {
+      typeNames.add(endpoint.body.type);
+    }
+    if (endpoint.response?.type) {
+      typeNames.add(endpoint.response.type);
+    }
+  }
+
+  // Generate imports (only if types are needed)
+  const imports = typeNames.size > 0
+    ? `// This file is auto-generated from yama.yaml
+// Do not edit manually - your changes will be overwritten
+
+import type { ${Array.from(typeNames).join(", ")} } from "${typesImportPath}";
+
+`
+    : `// This file is auto-generated from yama.yaml
+// Do not edit manually - your changes will be overwritten
+
+`;
+
+  // Generate client class
+  const clientClass = `export class YamaClient {
+  private baseUrl: string;
+
+  constructor(baseUrl: string = "${baseUrl}") {
+    this.baseUrl = baseUrl.replace(/\\/$/, "");
+  }
+
+  /**
+   * Set the base URL for API requests
+   */
+  setBaseUrl(baseUrl: string): void {
+    this.baseUrl = baseUrl.replace(/\\/$/, "");
+  }
+
+${endpoints.map(endpoint => generateEndpointMethod(endpoint, typesImportPath)).join("\n\n")}
+}
+
+/**
+ * Create a new Yama client instance
+ */
+export function createClient(baseUrl?: string): YamaClient {
+  return new YamaClient(baseUrl);
+}
+
+/**
+ * Default client instance
+ */
+export const api = new YamaClient();
+`;
+
+  return imports + clientClass;
+}
+

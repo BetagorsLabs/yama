@@ -1,6 +1,7 @@
 import { existsSync, writeFileSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, relative } from "path";
 import { generateTypes } from "@yama/core";
+import { generateSDK } from "@yama/sdk-ts";
 import { readYamaConfig, ensureDir, getConfigDir } from "../utils/file-utils.js";
 import { findYamaConfig, detectProjectType, inferOutputPath } from "../utils/project-detection.js";
 import { generateFrameworkHelpers, updateFrameworkConfig } from "../utils/framework-helpers.js";
@@ -41,16 +42,18 @@ async function generateOnce(configPath: string, options: GenerateOptions): Promi
     const configDir = getConfigDir(configPath);
     const projectType = detectProjectType(configDir);
 
+    let typesOutput: string | undefined;
+
     // Generate types
     if (!options.sdkOnly && config.models) {
-      const typesOutput = getTypesOutputPath(configPath, options);
+      typesOutput = getTypesOutputPath(configPath, options);
       await generateTypesFile(config.models, typesOutput, configDir);
     }
 
     // Generate SDK
     if (!options.typesOnly && config.endpoints) {
       const sdkOutput = getSdkOutputPath(configPath, options);
-      await generateSdkFile(config, sdkOutput, configDir, options.framework);
+      await generateSdkFile(config, sdkOutput, configDir, typesOutput, options.framework);
     }
 
     // Generate framework helpers if framework is specified
@@ -137,28 +140,42 @@ async function generateSdkFile(
   config: { models?: unknown; endpoints?: unknown },
   outputPath: string,
   configDir: string,
+  typesOutputPath?: string,
   framework?: string
 ): Promise<void> {
-  // SDK generation will be implemented in @yama/sdk-ts
-  // For now, we'll create a placeholder
-  const sdkContent = `// This file is auto-generated from yama.yaml
-// Do not edit manually - your changes will be overwritten
+  try {
+    const absoluteOutputPath = join(configDir, outputPath);
+    const outputDir = dirname(absoluteOutputPath);
+    
+    // Calculate relative path from SDK to types file for import
+    let typesImportPath = "./types";
+    if (typesOutputPath) {
+      const absoluteTypesPath = join(configDir, typesOutputPath);
+      const relativePath = relative(outputDir, absoluteTypesPath);
+      // Remove .ts extension and normalize path separators
+      typesImportPath = relativePath.replace(/\\/g, "/").replace(/\.ts$/, "");
+      // Ensure it starts with ./ or ../
+      if (!typesImportPath.startsWith(".")) {
+        typesImportPath = "./" + typesImportPath;
+      }
+    }
 
-// SDK generation coming soon!
-// Framework: ${framework || "auto-detected"}
+    const sdkContent = generateSDK(
+      config as Parameters<typeof generateSDK>[0],
+      {
+        baseUrl: process.env.YAMA_API_URL || "http://localhost:3000",
+        typesImportPath,
+        framework
+      }
+    );
 
-export const api = {
-  // Endpoints will be generated here
-};
-`;
-
-  const absoluteOutputPath = join(configDir, outputPath);
-  const outputDir = dirname(absoluteOutputPath);
-  
-  ensureDir(outputDir);
-  writeFileSync(absoluteOutputPath, sdkContent, "utf-8");
-  
-  console.log(`✅ Generated SDK: ${outputPath}`);
-  console.log("   ⚠️  SDK generation is a placeholder - full implementation coming soon!");
+    ensureDir(outputDir);
+    writeFileSync(absoluteOutputPath, sdkContent, "utf-8");
+    
+    console.log(`✅ Generated SDK: ${outputPath}`);
+  } catch (error) {
+    console.error("❌ Failed to generate SDK:", error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }
 
