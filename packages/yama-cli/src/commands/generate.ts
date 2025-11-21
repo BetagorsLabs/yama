@@ -2,7 +2,7 @@ import { existsSync, writeFileSync } from "fs";
 import { join, dirname, relative } from "path";
 import { generateTypes, type YamaEntities } from "@yama/core";
 import { generateSDK } from "@yama/sdk-ts";
-import { generateDrizzleSchema, generateMapper } from "@yama/db-postgres";
+import { generateDrizzleSchema, generateMapper, generateRepository } from "@yama/db-postgres";
 import { readYamaConfig, ensureDir, getConfigDir } from "../utils/file-utils.js";
 import { findYamaConfig, detectProjectType, inferOutputPath } from "../utils/project-detection.js";
 import { generateFrameworkHelpers, updateFrameworkConfig } from "../utils/framework-helpers.js";
@@ -185,6 +185,16 @@ async function generateDatabaseCode(
     const mapperPath = join(dbOutputDir, "mapper.ts");
     writeFileSync(mapperPath, mapper, "utf-8");
     console.log(`✅ Generated mapper: src/generated/db/mapper.ts`);
+
+    // Generate repository
+    const { repository, types } = generateRepository(entities, typesImportPath);
+    const repositoryPath = join(dbOutputDir, "repository.ts");
+    writeFileSync(repositoryPath, repository, "utf-8");
+    console.log(`✅ Generated repository: src/generated/db/repository.ts`);
+
+    const repositoryTypesPath = join(dbOutputDir, "repository-types.ts");
+    writeFileSync(repositoryTypesPath, types, "utf-8");
+    console.log(`✅ Generated repository types: src/generated/db/repository-types.ts`);
   } catch (error) {
     console.error("❌ Failed to generate database code:", error instanceof Error ? error.message : String(error));
     throw error;

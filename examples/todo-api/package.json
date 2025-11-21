@@ -7,14 +7,18 @@
     "dev": "tsx dev-server.mjs",
     "start": "tsx dev-server.mjs",
     "typegen": "yama-typegen yama.yaml src/types.ts",
-    "build": "echo \"Example doesn't need building, but ensure dependencies are built: pnpm build:packages\""
+    "build": "echo \"Example doesn't need building, but ensure dependencies are built: pnpm build:packages\"",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage"
   },
   "dependencies": {
     "@yama/runtime-node": "workspace:*",
     "@yama/core": "workspace:*"
   },
   "devDependencies": {
-    "tsx": "^4.7.0"
+    "tsx": "^4.7.0",
+    "vitest": "^1.0.0"
   }
 }
 

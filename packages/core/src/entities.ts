@@ -62,12 +62,21 @@ export interface YamaEntities {
  * Database connection configuration
  */
 export interface DatabaseConfig {
-  type: "postgresql";
+  dialect: "postgresql"; // Only postgresql supported for now
   url: string;
   pool?: {
     min?: number;
     max?: number;
   };
+  options?: Record<string, unknown>; // Dialect-specific options
+}
+
+/**
+ * HTTP server configuration
+ */
+export interface ServerConfig {
+  engine?: "fastify"; // Only fastify supported for now, defaults to "fastify"
+  options?: Record<string, unknown>; // Engine-specific options
 }
 
 /**

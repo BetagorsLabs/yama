@@ -1,13 +1,14 @@
-import { FastifyRequest, FastifyReply } from "fastify";
-import { getTodoById as dbGetTodoById } from "../db.js";
+import type { HttpRequest, HttpResponse } from "@yama/core";
+import { todoRepository } from "../db.js";
 import type { Todo } from "../types.js"; // Generated types!
 
 export async function getTodoById(
-  request: FastifyRequest<{ Params: { id: string } }>,
-  reply: FastifyReply
+  request: HttpRequest,
+  reply: HttpResponse
 ): Promise<Todo | void> {
-  const { id } = request.params;
-  const todo = await dbGetTodoById(id);
+  const params = request.params as { id: string };
+  const { id } = params;
+  const todo = await todoRepository.findById(id);
 
   if (!todo) {
     reply.status(404).send({

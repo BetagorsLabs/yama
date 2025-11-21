@@ -12,6 +12,7 @@ import { docsCommand } from "./commands/docs.js";
 import { migrateCommand } from "./commands/migrate.js";
 import { migrateApplyCommand } from "./commands/migrate-apply.js";
 import { migrateStatusCommand } from "./commands/migrate-status.js";
+import { pluginListCommand, pluginInstallCommand, pluginValidateCommand } from "./commands/plugin.js";
 
 const program = new Command();
 
@@ -129,6 +130,29 @@ program
   .description("Check database migration status")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .action(migrateStatusCommand);
+
+// Service plugins
+const pluginCommand = program
+  .command("plugin")
+  .description("Manage service plugins");
+
+pluginCommand
+  .command("list")
+  .description("List installed service plugins")
+  .action(pluginListCommand);
+
+pluginCommand
+  .command("install")
+  .description("Install a service plugin")
+  .argument("<package>", "Package name to install")
+  .action(async (packageName) => {
+    await pluginInstallCommand({ package: packageName });
+  });
+
+pluginCommand
+  .command("validate")
+  .description("Validate all installed service plugins")
+  .action(pluginValidateCommand);
 
 program.parse();
 

@@ -55,3 +55,37 @@ export {
   resolveEnvVars,
 } from "./env.js";
 
+// Export infrastructure adapters
+export {
+  type DatabaseAdapter,
+  type DatabaseConnection,
+  createDatabaseAdapter,
+  registerDatabaseAdapter,
+} from "./infrastructure/database.js";
+
+export {
+  type HttpServerAdapter,
+  type HttpRequest,
+  type HttpResponse,
+  type RouteHandler,
+  type HttpServerInstance,
+  createHttpServerAdapter,
+  registerHttpServerAdapter,
+} from "./infrastructure/server.js";
+
+// Export updated config types
+export {
+  type ServerConfig,
+} from "./entities.js";
+
+// Export service plugin system
+export {
+  type PluginManifest,
+  type ServicePlugin,
+  type PluginContext,
+  loadServicePlugin,
+  getServicePlugin,
+  getServicePluginByType,
+  loadPluginFromPackage,
+} from "./plugins/index.js";
+

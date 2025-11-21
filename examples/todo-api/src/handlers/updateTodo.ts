@@ -1,16 +1,14 @@
-import { FastifyRequest, FastifyReply } from "fastify";
-import { updateTodo as dbUpdateTodo } from "../db.js";
+import type { HttpRequest, HttpResponse } from "@yama/core";
+import { todoRepository } from "../db.js";
 import type { UpdateTodoInput } from "../types.js"; // Generated types!
 
 export async function updateTodo(
-  request: FastifyRequest<{ 
-    Params: { id: string };
-    Body: UpdateTodoInput;
-  }>,
-  reply: FastifyReply
+  request: HttpRequest,
+  reply: HttpResponse
 ) {
-  const { id } = request.params;
-  const updated = await dbUpdateTodo(id, request.body);
+  const params = request.params as { id: string };
+  const { id } = params;
+  const updated = await todoRepository.update(id, request.body as UpdateTodoInput);
 
   if (!updated) {
     reply.status(404).send({

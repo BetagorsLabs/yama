@@ -1,7 +1,31 @@
-import Fastify, { FastifyRequest, FastifyReply } from "fastify";
-import { helloYamaCore, createSchemaValidator, type YamaSchemas, type ValidationResult, type SchemaField, fieldToJsonSchema, type AuthConfig, type EndpointAuth, authenticateAndAuthorize, type YamaEntities, type DatabaseConfig, entitiesToSchemas, mergeSchemas, loadEnvFile, resolveEnvVars } from "@yama/core";
+import {
+  helloYamaCore,
+  createSchemaValidator,
+  type YamaSchemas,
+  type ValidationResult,
+  type SchemaField,
+  fieldToJsonSchema,
+  type AuthConfig,
+  type EndpointAuth,
+  authenticateAndAuthorize,
+  type YamaEntities,
+  type DatabaseConfig,
+  type ServerConfig,
+  entitiesToSchemas,
+  mergeSchemas,
+  loadEnvFile,
+  resolveEnvVars,
+  createDatabaseAdapter,
+  registerDatabaseAdapter,
+  createHttpServerAdapter,
+  registerHttpServerAdapter,
+  type HttpRequest,
+  type HttpResponse,
+  type RouteHandler,
+} from "@yama/core";
 import { generateOpenAPI } from "@yama/docs-generator";
-import { initDatabase, closeDatabase } from "@yama/db-postgres";
+import { postgresqlAdapter } from "@yama/db-postgres";
+import { createFastifyAdapter } from "@yama/http-fastify";
 import yaml from "js-yaml";
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, dirname, extname, resolve } from "path";
@@ -13,6 +37,7 @@ interface YamaConfig {
   schemas?: YamaSchemas;
   entities?: YamaEntities;
   database?: DatabaseConfig;
+  server?: ServerConfig;
   auth?: AuthConfig;
   endpoints?: Array<{
     path: string;
@@ -31,10 +56,7 @@ interface YamaConfig {
   }>;
 }
 
-type HandlerFunction = (
-  request: FastifyRequest,
-  reply: FastifyReply
-) => Promise<unknown> | unknown;
+type HandlerFunction = RouteHandler;
 
 /**
  * Load all handler functions from the handlers directory
@@ -184,7 +206,7 @@ function createDefaultHandler(
   endpoint: NonNullable<YamaConfig["endpoints"]>[number],
   responseType?: string
 ): HandlerFunction {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
+  return async (request: HttpRequest, reply: HttpResponse) => {
     // If response type is specified, return an empty object (will be validated)
     // Otherwise, return a simple success message
     if (responseType) {
@@ -203,7 +225,8 @@ function createDefaultHandler(
  * Register routes from YAML config with validation
  */
 function registerRoutes(
-  app: ReturnType<typeof Fastify>,
+  serverAdapter: ReturnType<typeof createHttpServerAdapter>,
+  server: unknown,
   config: YamaConfig,
   handlers: Record<string, HandlerFunction>,
   validator: ReturnType<typeof createSchemaValidator>
@@ -234,28 +257,18 @@ function registerRoutes(
       );
     }
 
-    const methodLower = method.toLowerCase() as
-      | "get"
-      | "post"
-      | "put"
-      | "patch"
-      | "delete"
-      | "head"
-      | "options";
-
-    // Register the route with Fastify
-    app[methodLower](path, async (request: FastifyRequest, reply: FastifyReply) => {
+    // Wrap handler with validation and auth
+    // Note: Handlers can use either normalized HttpRequest/HttpResponse or original engine types
+    const wrappedHandler: RouteHandler = async (request: HttpRequest, reply: HttpResponse) => {
       try {
+        // Get original request/reply for compatibility with existing handlers
+        const originalRequest = (request as HttpRequest & { _original?: unknown })._original;
+        const originalReply = (reply as HttpResponse & { _original?: unknown })._original;
+
         // Authenticate and authorize request
         if (config.auth || endpoint.auth) {
-          const headers: Record<string, string | undefined> = {};
-          // Collect all headers (Fastify lowercases header names)
-          for (const [key, value] of Object.entries(request.headers)) {
-            headers[key.toLowerCase()] = Array.isArray(value) ? value[0] : value;
-          }
-
           const authResult = await authenticateAndAuthorize(
-            headers,
+            request.headers,
             config.auth,
             endpoint.auth
           );
@@ -269,13 +282,16 @@ function registerRoutes(
           }
 
           // Attach auth context to request for handlers to use
-          (request as FastifyRequest & { auth: typeof authResult.context }).auth = authResult.context;
+          (request as HttpRequest & { auth: typeof authResult.context }).auth = authResult.context;
+          // Also attach to original request if available
+          if (originalRequest) {
+            (originalRequest as { auth: typeof authResult.context }).auth = authResult.context;
+          }
         }
 
         // Validate and coerce path parameters if specified
         if (params && Object.keys(params).length > 0) {
-          const pathParams = request.params as Record<string, unknown>;
-          const coercedParams = coerceParams(pathParams, params, config.schemas);
+          const coercedParams = coerceParams(request.params, params, config.schemas);
           
           // Build a temporary schema for path parameter validation
           const paramsSchema = buildQuerySchema(params, config.schemas);
@@ -291,13 +307,12 @@ function registerRoutes(
           }
           
           // Replace params with coerced values
-          request.params = coercedParams as typeof request.params;
+          request.params = coercedParams;
         }
 
         // Validate and coerce query parameters if specified
         if (query && Object.keys(query).length > 0) {
-          const queryParams = request.query as Record<string, unknown>;
-          const coercedQuery = coerceParams(queryParams, query, config.schemas);
+          const coercedQuery = coerceParams(request.query, query, config.schemas);
           
           // Build a temporary schema for query validation
           const querySchema = buildQuerySchema(query, config.schemas);
@@ -313,7 +328,7 @@ function registerRoutes(
           }
           
           // Replace query with coerced values
-          request.query = coercedQuery as typeof request.query;
+          request.query = coercedQuery;
         }
 
         // Validate request body if model is specified
@@ -330,6 +345,9 @@ function registerRoutes(
           }
         }
 
+        // Call handler - handlers can use normalized types or access _original for engine-specific types
+        // For backward compatibility with Fastify handlers, we pass the normalized types
+        // but handlers can access request._original and reply._original if needed
         const result = await handlerFn(request, reply);
         
         // Validate response if response model is specified
@@ -366,7 +384,10 @@ function registerRoutes(
           message: error instanceof Error ? error.message : String(error)
         });
       }
-    });
+    };
+
+    // Register route using adapter
+    serverAdapter.registerRoute(server, method, path, wrappedHandler);
 
     const handlerLabel = handlerName || "default";
     console.log(
@@ -384,7 +405,9 @@ export async function startYamaNodeRuntime(
   port = 3000,
   yamlConfigPath?: string
 ): Promise<YamaServer> {
-  const app = Fastify();
+  // Register default adapters
+  registerDatabaseAdapter("postgresql", () => postgresqlAdapter);
+  registerHttpServerAdapter("fastify", (options) => createFastifyAdapter(options));
 
   // Create schema validator
   const validator = createSchemaValidator();
@@ -392,6 +415,9 @@ export async function startYamaNodeRuntime(
   // Load and parse YAML config if provided
   let config: YamaConfig | null = null;
   let handlersDir: string | null = null;
+  let dbAdapter: ReturnType<typeof createDatabaseAdapter> | null = null;
+  let serverAdapter: ReturnType<typeof createHttpServerAdapter> | null = null;
+  let server: unknown = null;
 
   if (yamlConfigPath) {
     try {
@@ -416,9 +442,13 @@ export async function startYamaNodeRuntime(
           }
           
           // Only initialize if URL is valid (not a placeholder)
-          if (dbConfig.url && !dbConfig.url.includes("user:password") && dbConfig.url.startsWith("postgresql://")) {
-            initDatabase(dbConfig);
-            console.log("✅ Database connection initialized");
+          if (dbConfig.url && !dbConfig.url.includes("user:password")) {
+            if (dbConfig.dialect !== "postgresql") {
+              throw new Error(`Unsupported database dialect: ${dbConfig.dialect}. Only "postgresql" is supported.`);
+            }
+            dbAdapter = createDatabaseAdapter("postgresql", dbConfig);
+            await dbAdapter.init(dbConfig);
+            console.log("✅ Database connection initialized (postgresql)");
           } else {
             console.log("⚠️  Database URL not configured or invalid - running without database");
           }
@@ -445,19 +475,28 @@ export async function startYamaNodeRuntime(
     }
   }
 
-  app.get("/health", async () => ({
-    status: "ok",
-    core: helloYamaCore(),
-    configLoaded: config !== null
-  }));
+  // Create HTTP server adapter
+  const serverEngine = config?.server?.engine || "fastify";
+  if (serverEngine !== "fastify") {
+    throw new Error(`Unsupported server engine: ${serverEngine}. Only "fastify" is supported.`);
+  }
+  serverAdapter = createHttpServerAdapter("fastify", config?.server?.options);
+  server = serverAdapter.createServer(config?.server?.options);
 
-  // Expose config for inspection
-  app.get("/config", async () => ({
-    config
-  }));
+  // Register built-in routes using adapter
+  serverAdapter.registerRoute(server, "GET", "/health", async (request: HttpRequest, reply: HttpResponse) => {
+    return {
+      status: "ok",
+      core: helloYamaCore(),
+      configLoaded: config !== null
+    };
+  });
 
-  // Serve OpenAPI spec
-  app.get("/openapi.json", async (request: FastifyRequest, reply: FastifyReply) => {
+  serverAdapter.registerRoute(server, "GET", "/config", async (request: HttpRequest, reply: HttpResponse) => {
+    return { config };
+  });
+
+  serverAdapter.registerRoute(server, "GET", "/openapi.json", async (request: HttpRequest, reply: HttpResponse) => {
     if (!config) {
       reply.status(404).send({ error: "No config loaded" });
       return;
@@ -466,8 +505,7 @@ export async function startYamaNodeRuntime(
     reply.type("application/json").send(openAPISpec);
   });
 
-  // Serve Swagger UI
-  app.get("/docs", async (request: FastifyRequest, reply: FastifyReply) => {
+  serverAdapter.registerRoute(server, "GET", "/docs", async (request: HttpRequest, reply: HttpResponse) => {
     if (!config) {
       reply.status(404).send({ error: "No config loaded" });
       return;
@@ -526,18 +564,20 @@ export async function startYamaNodeRuntime(
   });
 
   // Load handlers and register routes
-  if (config?.endpoints && handlersDir) {
+  if (config?.endpoints && handlersDir && serverAdapter) {
     const handlers = await loadHandlers(handlersDir);
-    registerRoutes(app, config, handlers, validator);
+    registerRoutes(serverAdapter, server, config, handlers, validator);
   }
 
-  await app.listen({ port, host: "0.0.0.0" });
-  console.log(`Yama runtime listening on http://localhost:${port}`);
+  await serverAdapter.start(server, port, "0.0.0.0");
+  console.log(`Yama runtime listening on http://localhost:${port} (${serverEngine})`);
 
   return {
     stop: async () => {
-      await app.close();
-      await closeDatabase();
+      await serverAdapter?.stop(server);
+      if (dbAdapter) {
+        await dbAdapter.close();
+      }
     },
     port
   };

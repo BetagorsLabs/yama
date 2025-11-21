@@ -1,4 +1,4 @@
-// Export client functions
+// Export client functions (legacy - for backward compatibility)
 export {
   initDatabase,
   getDatabase,
@@ -10,5 +10,9 @@ export {
 export { generateDrizzleSchema } from "./drizzle-schema.js";
 export { generateMigrationSQL, generateMigrationFile } from "./migrations.js";
 export { generateMapper } from "./mapper.js";
+export { generateRepository } from "./repository.js";
+
+// Export adapter
+export { postgresqlAdapter } from "./adapter.js";
 
 

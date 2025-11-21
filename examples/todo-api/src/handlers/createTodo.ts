@@ -1,13 +1,13 @@
-import { FastifyRequest, FastifyReply } from "fastify";
-import { createTodo as dbCreateTodo } from "../db.js";
+import type { HttpRequest, HttpResponse } from "@yama/core";
+import { todoRepository } from "../db.js";
 import type { CreateTodoInput } from "../types.js"; // Generated types!
 
 export async function createTodo(
-  request: FastifyRequest<{ Body: CreateTodoInput }>,
-  reply: FastifyReply
+  request: HttpRequest,
+  reply: HttpResponse
 ) {
   // Validation is now automatic! Just use the data
-  const todo = await dbCreateTodo(request.body);
+  const todo = await todoRepository.create(request.body as CreateTodoInput);
 
   reply.status(201);
   return todo;

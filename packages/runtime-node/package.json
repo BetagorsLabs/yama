@@ -8,21 +8,24 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -w -p tsconfig.build.json",
     "lint": "echo \"no lint yet\"",
-    "test": "echo \"no tests yet\"",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage",
     "clean": "rimraf dist"
   },
   "dependencies": {
     "@yama/core": "workspace:*",
     "@yama/docs-generator": "workspace:*",
     "@yama/db-postgres": "workspace:*",
-    "fastify": "^5.0.0",
+    "@yama/http-fastify": "workspace:*",
     "js-yaml": "^4.1.1",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "rimraf": "^5.0.0",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "vitest": "^1.0.0"
   }
 }
 

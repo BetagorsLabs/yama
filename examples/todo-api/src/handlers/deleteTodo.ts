@@ -1,12 +1,13 @@
-import { FastifyRequest, FastifyReply } from "fastify";
-import { deleteTodo as dbDeleteTodo } from "../db.js";
+import type { HttpRequest, HttpResponse } from "@yama/core";
+import { todoRepository } from "../db.js";
 
 export async function deleteTodo(
-  request: FastifyRequest<{ Params: { id: string } }>,
-  reply: FastifyReply
+  request: HttpRequest,
+  reply: HttpResponse
 ) {
-  const { id } = request.params;
-  const deleted = await dbDeleteTodo(id);
+  const params = request.params as { id: string };
+  const { id } = params;
+  const deleted = await todoRepository.delete(id);
 
   if (!deleted) {
     reply.status(404).send({

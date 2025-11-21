@@ -2,7 +2,7 @@ name: todo-api
 version: 1.0.0
 
 database:
-  type: postgresql
+  dialect: postgresql
   url: ${DATABASE_URL}
 
 auth:

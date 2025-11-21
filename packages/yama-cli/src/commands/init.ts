@@ -41,6 +41,15 @@ export async function initCommand(options: InitOptions): Promise<void> {
   const yamlContent = `name: ${projectName}
 version: ${version}
 
+# Database configuration (optional)
+# database:
+#   dialect: postgresql
+#   url: "\${DATABASE_URL}"
+
+# Server configuration (optional, defaults to fastify)
+# server:
+#   engine: fastify
+
 schemas:
   Example:
     fields:
