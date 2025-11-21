@@ -409,10 +409,21 @@ export async function startYamaNodeRuntime(
       // Initialize database if configured
       if (config.database) {
         try {
-          initDatabase(config.database);
-          console.log("✅ Database connection initialized");
+          // Resolve environment variables in database URL
+          const dbConfig = { ...config.database };
+          if (typeof dbConfig.url === "string" && dbConfig.url.includes("${")) {
+            dbConfig.url = resolveEnvVars(dbConfig.url) as string;
+          }
+          
+          // Only initialize if URL is valid (not a placeholder)
+          if (dbConfig.url && !dbConfig.url.includes("user:password") && dbConfig.url.startsWith("postgresql://")) {
+            initDatabase(dbConfig);
+            console.log("✅ Database connection initialized");
+          } else {
+            console.log("⚠️  Database URL not configured or invalid - running without database");
+          }
         } catch (error) {
-          console.error("❌ Failed to initialize database:", error);
+          console.warn("⚠️  Failed to initialize database (continuing without DB):", error instanceof Error ? error.message : String(error));
         }
       }
 
