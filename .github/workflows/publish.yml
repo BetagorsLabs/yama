@@ -48,6 +48,11 @@ jobs:
       - name: Build packages
         run: pnpm build:packages
 
+      - name: Configure npm for scoped packages
+        run: |
+          echo "@betagors:registry=https://registry.npmjs.org/" >> ~/.npmrc
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc
+
       # Note: If NPM_TOKEN is not set, this will only create version PRs, not publish
       # To enable publishing:
       # 1. Create npm org: https://www.npmjs.com/org/create (name: betagors)
