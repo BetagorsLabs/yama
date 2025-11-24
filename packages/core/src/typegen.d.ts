@@ -1,5 +1,6 @@
-import type { YamaModels } from "./models";
+import type { YamaSchemas } from "./schemas";
+import type { YamaEntities } from "./entities";
 /**
- * Generate TypeScript types from Yama models
+ * Generate TypeScript types from Yama schemas and entities
  */
-export declare function generateTypes(models: YamaModels): string;
+export declare function generateTypes(schemas?: YamaSchemas, entities?: YamaEntities): string;

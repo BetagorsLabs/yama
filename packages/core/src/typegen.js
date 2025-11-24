@@ -1,17 +1,18 @@
+import { entitiesToSchemas, mergeSchemas } from "./entities";
 /**
- * Convert a Yama model field to TypeScript type string
+ * Convert a Yama schema field to TypeScript type string
  */
-function fieldToTypeScript(field, indent = 0, models, visited = new Set()) {
+function fieldToTypeScript(field, indent = 0, schemas, visited = new Set()) {
     const spaces = "  ".repeat(indent);
-    // Handle model references
+    // Handle schema references
     if (field.$ref) {
         if (visited.has(field.$ref)) {
             throw new Error(`Circular reference detected in type generation: ${field.$ref}`);
         }
-        if (!models || !models[field.$ref]) {
-            throw new Error(`Model reference "${field.$ref}" not found in type generation`);
+        if (!schemas || !schemas[field.$ref]) {
+            throw new Error(`Schema reference "${field.$ref}" not found in type generation`);
         }
-        // Return the referenced model name directly
+        // Return the referenced schema name directly
         return field.$ref;
     }
     // Type is required if $ref is not present
@@ -45,7 +46,7 @@ function fieldToTypeScript(field, indent = 0, models, visited = new Set()) {
             return "boolean";
         case "array":
             if (field.items) {
-                const itemType = fieldToTypeScript(field.items, indent, models, visited);
+                const itemType = fieldToTypeScript(field.items, indent, schemas, visited);
                 return `${itemType}[]`;
             }
             return "unknown[]";
@@ -53,7 +54,7 @@ function fieldToTypeScript(field, indent = 0, models, visited = new Set()) {
             if (field.properties) {
                 const props = [];
                 for (const [propName, propField] of Object.entries(field.properties)) {
-                    const propType = fieldToTypeScript(propField, indent + 1, models, visited);
+                    const propType = fieldToTypeScript(propField, indent + 1, schemas, visited);
                     const optional = propField.required ? "" : "?";
                     props.push(`${spaces}  ${propName}${optional}: ${propType};`);
                 }
@@ -65,28 +66,31 @@ function fieldToTypeScript(field, indent = 0, models, visited = new Set()) {
     }
 }
 /**
- * Generate TypeScript type definition for a model
+ * Generate TypeScript type definition for a schema
  */
-function generateModelType(modelName, modelDef, models, visited = new Set()) {
+function generateSchemaType(schemaName, schemaDef, schemas, visited = new Set()) {
     const fields = [];
-    for (const [fieldName, field] of Object.entries(modelDef.fields)) {
-        const fieldType = fieldToTypeScript(field, 1, models, visited);
+    for (const [fieldName, field] of Object.entries(schemaDef.fields)) {
+        const fieldType = fieldToTypeScript(field, 1, schemas, visited);
         const optional = field.required ? "" : "?";
         fields.push(`  ${fieldName}${optional}: ${fieldType};`);
     }
-    return `export interface ${modelName} {\n${fields.join("\n")}\n}`;
+    return `export interface ${schemaName} {\n${fields.join("\n")}\n}`;
 }
 /**
- * Generate TypeScript types from Yama models
+ * Generate TypeScript types from Yama schemas and entities
  */
-export function generateTypes(models) {
+export function generateTypes(schemas, entities) {
     const imports = `// This file is auto-generated from yama.yaml
 // Do not edit manually - your changes will be overwritten
 
 `;
+    // Convert entities to schemas and merge with explicit schemas
+    const entitySchemas = entities ? entitiesToSchemas(entities) : {};
+    const allSchemas = mergeSchemas(schemas, entitySchemas);
     const typeDefinitions = [];
-    for (const [modelName, modelDef] of Object.entries(models)) {
-        typeDefinitions.push(generateModelType(modelName, modelDef, models));
+    for (const [schemaName, schemaDef] of Object.entries(allSchemas)) {
+        typeDefinitions.push(generateSchemaType(schemaName, schemaDef, allSchemas));
     }
     return imports + typeDefinitions.join("\n\n") + "\n";
 }
