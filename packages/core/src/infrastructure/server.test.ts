@@ -3,7 +3,7 @@ import {
   createHttpServerAdapter,
   registerHttpServerAdapter,
   type HttpServerAdapter,
-} from "./server.ts";
+} from "./server";
 
 describe("HTTP Server Adapter", () => {
   it("should throw error for unsupported engine", () => {
