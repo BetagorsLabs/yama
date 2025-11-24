@@ -196,7 +196,7 @@ async function generateDatabaseCode(
     ensureDir(dbOutputDir);
 
     // Calculate types import path (from .yama/db/ to .yama/types.ts)
-    const typesImportPath = "../types";
+    const typesImportPath = "../types.ts";
 
     // Generate Drizzle schema
     const dbPlugin = await getDatabasePlugin(configPlugins, configPath);
@@ -224,15 +224,15 @@ async function generateDatabaseCode(
     // Generate index.ts with exports
     const entityNames = Object.keys(entities);
     const indexContent = `// Auto-generated - do not edit
-export * from "./schema";
-export * from "./mapper";
-export * from "./repository";
-export * from "./repository-types";
+export * from "./schema.ts";
+export * from "./mapper.ts";
+export * from "./repository.ts";
+export * from "./repository-types.ts";
 
 // Re-export repository instances (already created in repository.ts)
 ${entityNames.map(name => {
   const camelName = name.charAt(0).toLowerCase() + name.slice(1);
-  return `export { ${camelName}Repository } from "./repository";`;
+  return `export { ${camelName}Repository } from "./repository.ts";`;
 }).join("\n")}
 `;
     const indexPath = join(dbOutputDir, "index.ts");
@@ -257,7 +257,7 @@ async function generateSdkFile(
     
     // Calculate relative path from SDK to types file for import
     // From .yama/sdk/ to .yama/types.ts
-    const typesImportPath = "../types";
+    const typesImportPath = "../types.ts";
 
     const sdkContent = generateSDK(
       config as Parameters<typeof generateSDK>[0],
@@ -275,7 +275,7 @@ async function generateSdkFile(
     // Generate index.ts for SDK
     const sdkDir = getSdkDir(configDir);
     const indexContent = `// Auto-generated - do not edit
-export * from "./client";
+export * from "./client.ts";
 `;
     const indexPath = join(sdkDir, "index.ts");
     writeFileSync(indexPath, indexContent, "utf-8");

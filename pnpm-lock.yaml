@@ -263,14 +263,20 @@ importers:
         specifier: ^5.0.0
         version: 5.0.10
 
-  packages/sdk-ts:
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.25
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
+  test-app:
+    dependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.2.0
+        version: 0.2.17
+      '@yama/core':
+        specifier: file:../packages/core
+        version: link:../packages/core
+      '@yama/pglite':
+        specifier: file:../packages/pglite
+        version: file:packages/pglite(better-sqlite3@9.2.2)(postgres@3.4.7)
+      '@yama/runtime-node':
+        specifier: file:../packages/runtime-node
+        version: file:packages/runtime-node
 
 packages:
 
@@ -1060,6 +1066,12 @@ packages:
 
   '@vitest/utils@1.6.1':
     resolution: {integrity: sha512-jOrrUvXM4Av9ZWiG1EajNto0u96kWAhJ1LmPmJhXXQx/32MecEKd10pOLYgS2BQx1TgkGhloPU1ArDW2vvaY6g==}
+
+  '@yama/pglite@file:packages/pglite':
+    resolution: {directory: packages/pglite, type: directory}
+
+  '@yama/runtime-node@file:packages/runtime-node':
+    resolution: {directory: packages/runtime-node, type: directory}
 
   abstract-logging@2.0.1:
     resolution: {integrity: sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA==}
@@ -2920,6 +2932,46 @@ snapshots:
       estree-walker: 3.0.3
       loupe: 2.3.7
       pretty-format: 29.7.0
+
+  '@yama/pglite@file:packages/pglite(better-sqlite3@9.2.2)(postgres@3.4.7)':
+    dependencies:
+      '@electric-sql/pglite': 0.2.17
+      '@yama/core': link:packages/core
+      drizzle-orm: 0.30.10(@electric-sql/pglite@0.2.17)(better-sqlite3@9.2.2)(postgres@3.4.7)
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@libsql/client'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/react'
+      - '@types/sql.js'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - react
+      - sql.js
+      - sqlite3
+
+  '@yama/runtime-node@file:packages/runtime-node':
+    dependencies:
+      '@yama/core': link:packages/core
+      '@yama/docs-generator': link:packages/docs-generator
+      '@yama/http-fastify': link:packages/http-fastify
+      '@yama/postgres': link:packages/postgres
+      dotenv: 16.6.1
+      js-yaml: 4.1.1
 
   abstract-logging@2.0.1: {}
 

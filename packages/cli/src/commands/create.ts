@@ -317,7 +317,9 @@ export async function createCommand(projectName?: string, options: CreateOptions
     } else {
       dependencies["@yama/core"] = "latest";
       dependencies["@yama/runtime-node"] = "latest";
-      devDependencies["@yama/cli"] = "latest";
+      // Note: @yama/cli should be installed globally, not as a project dependency
+      // Users should run: npm install -g @yama/cli (once published)
+      // Or use: npx @yama/cli <command>
     }
     
     // Add plugins
@@ -613,15 +615,19 @@ The server will start on [http://localhost:4000](http://localhost:4000).
   
   info("Next steps:");
   console.log(colors.dim(`   1. cd ${finalProjectName}`));
-  console.log(colors.dim(`   2. ${packageManager} install`));
   
-  // Note about workspace installs
-  if (isInWorkspace) {
+  // Note about CLI installation
+  if (!isInWorkspace) {
+    console.log(colors.dim(`   2. Install Yama CLI globally: npm install -g @yama/cli`));
+    console.log(colors.dim(`      (Or use: npx @yama/cli <command> for each command)`));
+    console.log(colors.dim(`   3. ${packageManager} install`));
+    console.log(colors.dim(`   4. ${packageManager} dev`));
+  } else {
+    console.log(colors.dim(`   2. ${packageManager} install`));
     console.log(colors.dim(`      Note: If you're in a workspace, run install from the project directory`));
     console.log(colors.dim(`      to avoid installing workspace package dependencies.`));
+    console.log(colors.dim(`   3. ${packageManager} dev`));
   }
-  
-  console.log(colors.dim(`   3. ${packageManager} dev`));
   if (databaseChoice === "none") {
     console.log();
     info("💡 Tip: Add a database later with:");

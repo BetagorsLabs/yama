@@ -27,9 +27,11 @@ import {
 import { generateOpenAPI } from "@yama/docs-generator";
 import { createFastifyAdapter } from "@yama/http-fastify";
 import yaml from "js-yaml";
-import { readFileSync, readdirSync, existsSync } from "fs";
-import { join, dirname, extname, resolve } from "path";
+import { readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync } from "fs";
+import { join, dirname, extname, resolve, relative } from "path";
 import { pathToFileURL } from "url";
+import { createRequire } from "module";
+import { tmpdir } from "os";
 
 interface YamaConfig {
   name?: string;
@@ -59,14 +61,82 @@ interface YamaConfig {
 type HandlerFunction = RouteHandler;
 
 /**
+ * Resolve @yama/* imports using package.json exports
+ */
+function resolveYamaImports(handlerContent: string, projectRoot: string, fromPath: string): string {
+  try {
+    const packageJsonPath = join(projectRoot, "package.json");
+    if (!existsSync(packageJsonPath)) {
+      return handlerContent;
+    }
+
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
+    const exports = packageJson.exports || {};
+
+    // Replace @yama/* imports with resolved paths
+    let resolvedContent = handlerContent;
+    for (const [exportPath, exportValue] of Object.entries(exports)) {
+      if (exportPath.startsWith("@yama/")) {
+        let resolvedPath: string;
+        if (typeof exportValue === "string") {
+          resolvedPath = exportValue;
+        } else if (exportValue && typeof exportValue === "object" && "default" in exportValue) {
+          resolvedPath = String((exportValue as { default?: string }).default || exportPath);
+        } else {
+          continue; // Skip if we can't resolve
+        }
+        
+        // Convert to relative path from the file that will import it (fromPath)
+        const absolutePath = resolve(projectRoot, resolvedPath);
+        const fromDir = dirname(fromPath);
+        let relativePath = relative(fromDir, absolutePath).replace(/\\/g, "/");
+        
+        // Ensure path starts with ./
+        if (!relativePath.startsWith(".")) {
+          relativePath = `./${relativePath}`;
+        }
+        
+        // Ensure .ts extension is preserved for ES modules
+        if (resolvedPath.endsWith(".ts") && !relativePath.endsWith(".ts")) {
+          relativePath = `${relativePath}.ts`;
+        }
+        
+        // Replace import statements (handle both import and import type)
+        const importRegex = new RegExp(
+          `(import\\s+(?:type\\s+)?[^"']*\\s+from\\s+["'])${exportPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(["'])`,
+          "g"
+        );
+        resolvedContent = resolvedContent.replace(importRegex, `$1${relativePath}$2`);
+      }
+    }
+
+    return resolvedContent;
+  } catch (error) {
+    // If resolution fails, return original content
+    return handlerContent;
+  }
+}
+
+/**
  * Load all handler functions from the handlers directory
  */
-async function loadHandlers(handlersDir: string): Promise<Record<string, HandlerFunction>> {
+async function loadHandlers(handlersDir: string, projectRoot?: string): Promise<Record<string, HandlerFunction>> {
   const handlers: Record<string, HandlerFunction> = {};
 
   if (!existsSync(handlersDir)) {
     console.warn(`⚠️  Handlers directory not found: ${handlersDir}`);
     return handlers;
+  }
+
+  // Determine project root (directory containing package.json)
+  const configRoot = projectRoot || dirname(handlersDir);
+  let actualProjectRoot = configRoot;
+  let packageJsonPath = join(configRoot, "package.json");
+  
+  // Walk up to find package.json
+  while (!existsSync(packageJsonPath) && actualProjectRoot !== dirname(actualProjectRoot)) {
+    actualProjectRoot = dirname(actualProjectRoot);
+    packageJsonPath = join(actualProjectRoot, "package.json");
   }
 
   try {
@@ -80,8 +150,30 @@ async function loadHandlers(handlersDir: string): Promise<Record<string, Handler
       const handlerPath = join(handlersDir, file);
 
       try {
+        // Read handler content
+        let handlerContent = readFileSync(handlerPath, "utf-8");
+        let importPath = handlerPath;
+        
+        // Resolve @yama/* imports if package.json exists
+        if (existsSync(packageJsonPath)) {
+          // Determine where the file will be located (temp file or original)
+          const tempDir = join(tmpdir(), "yama-handlers");
+          const tempPath = join(tempDir, `${handlerName}-${Date.now()}.ts`);
+          
+          // Resolve imports relative to where the file will be (temp file location)
+          // This ensures relative paths are correct when the handler is loaded
+          const transformedContent = resolveYamaImports(handlerContent, actualProjectRoot, tempPath);
+          
+          // If content was transformed, write to temp file
+          if (transformedContent !== handlerContent) {
+            mkdirSync(tempDir, { recursive: true });
+            writeFileSync(tempPath, transformedContent, "utf-8");
+            importPath = tempPath;
+          }
+        }
+
         // Convert to absolute path and then to file URL for ES module import
-        const absolutePath = resolve(handlerPath);
+        const absolutePath = resolve(importPath);
         // Use file:// URL for ES module import
         // Note: When running with tsx, it will handle .ts files automatically
         const fileUrl = pathToFileURL(absolutePath).href;
@@ -418,6 +510,7 @@ export async function startYamaNodeRuntime(
   // Load and parse YAML config if provided
   let config: YamaConfig | null = null;
   let handlersDir: string | null = null;
+  let configDir: string | null = null;
   let dbAdapter: ReturnType<typeof createDatabaseAdapter> | null = null;
   let serverAdapter: ReturnType<typeof createHttpServerAdapter> | null = null;
   let server: unknown = null;
@@ -524,7 +617,7 @@ export async function startYamaNodeRuntime(
       }
 
       // Determine handlers directory (src/handlers relative to YAML file)
-      const configDir = dirname(yamlConfigPath);
+      configDir = dirname(yamlConfigPath);
       handlersDir = join(configDir, "src", "handlers");
     } catch (error) {
       console.error("❌ Failed to load YAML config:", error);
@@ -620,8 +713,8 @@ export async function startYamaNodeRuntime(
   });
 
   // Load handlers and register routes
-  if (config?.endpoints && handlersDir && serverAdapter) {
-    const handlers = await loadHandlers(handlersDir);
+  if (config?.endpoints && handlersDir && serverAdapter && configDir) {
+    const handlers = await loadHandlers(handlersDir, configDir);
     registerRoutes(serverAdapter, server, config, handlers, validator);
   }
 
