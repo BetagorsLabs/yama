@@ -3,8 +3,8 @@ import {
   validateManifest,
   validateYamaPlugin,
   validateServicePlugin,
-} from "./validator.ts";
-import type { PluginManifest, YamaPlugin, ServicePlugin } from "./base.ts";
+} from "./validator";
+import type { PluginManifest, YamaPlugin, ServicePlugin } from "./base";
 
 describe("Plugin Validator", () => {
   describe("validateManifest", () => {
