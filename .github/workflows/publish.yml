@@ -46,6 +46,11 @@ jobs:
       - name: Build packages
         run: pnpm build:packages
 
+      # Note: If NPM_TOKEN is not set, this will only create version PRs, not publish
+      # To enable publishing:
+      # 1. Create npm org: https://www.npmjs.com/org/create (name: betagors)
+      # 2. Create automation token: https://www.npmjs.com/settings/betagors/tokens
+      # 3. Add token to GitHub Secrets as NPM_TOKEN
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
