@@ -7,6 +7,6 @@ export function useMDXComponents(components?: MDXComponents): MDXComponents {
   return {
     ...themeComponents,
     ...components,
-  };
+  } as MDXComponents;
 }
 
