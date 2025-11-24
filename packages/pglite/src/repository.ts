@@ -346,7 +346,7 @@ function generateRepositoryClass(
     primaryDbColumn
   );
   
-  return `import { postgresqlAdapter } from "@yama/postgres";
+  return `import { pgliteAdapter } from "@yama/pglite";
 import { ${tableName} } from "./schema.ts";
 import { ${mapperToEntity}, ${mapperFromEntity} } from "./mapper.ts";
 import { eq, and, ilike, gt, lt, desc, asc } from "drizzle-orm";
@@ -354,13 +354,13 @@ import type { SQL } from "drizzle-orm";
 import type { ${apiSchemaName}, ${createInputName}, ${updateInputName} } from "${typesImportPath}";
 import type { ${entityName}RepositoryMethods } from "./repository-types.ts";
 import type { ReturnType } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/postgres-js";
+import type { drizzle } from "drizzle-orm/pglite";
 
 type Database = ReturnType<typeof drizzle>;
 
 function getDb(): Database {
   try {
-    return postgresqlAdapter.getClient() as Database;
+    return pgliteAdapter.getClient() as Database;
   } catch (error) {
     throw new Error("Database not initialized - ensure database is configured in yama.yaml");
   }

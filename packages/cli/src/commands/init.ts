@@ -206,7 +206,7 @@ ${yamlContent}`;
   const exampleHandlerPath = join(handlersDir, "getExamples.ts");
   if (!existsSync(exampleHandlerPath)) {
     const handlerContent = `import type { HttpRequest, HttpResponse } from "@yama/core";
-import type { Example } from "@yama/types";
+import type { Example } from "@gen/types";
 
 export async function getExamples(
   request: HttpRequest,
@@ -244,6 +244,27 @@ export async function getExamples(
         scripts["yama:validate"] = "yama validate";
       }
 
+      // Add exports field if it doesn't exist
+      if (!pkg.exports) {
+        pkg.exports = {
+          "@gen/db": "./.yama/gen/db/index.ts",
+          "@gen/types": "./.yama/gen/types.ts",
+          "@gen/sdk": "./.yama/gen/sdk/index.ts",
+        };
+      } else {
+        // Update existing exports to include gen paths if not present
+        const exports = pkg.exports as Record<string, string>;
+        if (!exports["@gen/db"]) {
+          exports["@gen/db"] = "./.yama/gen/db/index.ts";
+        }
+        if (!exports["@gen/types"]) {
+          exports["@gen/types"] = "./.yama/gen/types.ts";
+        }
+        if (!exports["@gen/sdk"]) {
+          exports["@gen/sdk"] = "./.yama/gen/sdk/index.ts";
+        }
+      }
+
       writePackageJson(packageJsonPath, pkg);
       console.log("✅ Added scripts to package.json");
     } catch (error) {
@@ -251,6 +272,67 @@ export async function getExamples(
     }
   } else {
     console.log("ℹ️  No package.json found - run 'npm init' first");
+  }
+
+  // Create or update tsconfig.json
+  const tsconfigPath = join(cwd, "tsconfig.json");
+  try {
+    if (existsSync(tsconfigPath)) {
+      // Read and merge existing config
+      const tsconfigContent = readFileSync(tsconfigPath, "utf-8");
+      const tsconfig = JSON.parse(tsconfigContent);
+
+      // Ensure compilerOptions exists
+      if (!tsconfig.compilerOptions) {
+        tsconfig.compilerOptions = {};
+      }
+
+      // Ensure paths exists
+      if (!tsconfig.compilerOptions.paths) {
+        tsconfig.compilerOptions.paths = {};
+      }
+
+      // Add/update Yama paths
+      tsconfig.compilerOptions.paths = {
+        ...tsconfig.compilerOptions.paths,
+        "@gen/db": [".yama/gen/db"],
+        "@gen/sdk": [".yama/gen/sdk"],
+        "@gen/types": [".yama/gen/types.ts"],
+      };
+
+      writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2) + "\n");
+      console.log("✅ Updated tsconfig.json");
+    } else {
+      // Create new tsconfig.json
+      const tsconfig = {
+        compilerOptions: {
+          target: "ES2020",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          strict: true,
+          esModuleInterop: true,
+          skipLibCheck: true,
+          resolveJsonModule: true,
+          baseUrl: ".",
+          paths: {
+            "@gen/db": [".yama/gen/db"],
+            "@gen/sdk": [".yama/gen/sdk"],
+            "@gen/types": [".yama/gen/types.ts"],
+          },
+        },
+        include: [
+          "src/**/*",
+          ".yama/**/*",
+        ],
+        exclude: [
+          "node_modules",
+        ],
+      };
+      writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2) + "\n");
+      console.log("✅ Created tsconfig.json");
+    }
+  } catch (error) {
+    console.log("⚠️  Could not update tsconfig.json:", error instanceof Error ? error.message : String(error));
   }
 
   // Update .gitignore

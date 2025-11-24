@@ -28,9 +28,9 @@ export function updateTypeScriptPaths(configDir: string): void {
     // Update Yama paths
     tsconfig.compilerOptions.paths = {
       ...tsconfig.compilerOptions.paths,
-      "@yama/db": [".yama/db"],
-      "@yama/sdk": [".yama/sdk"],
-      "@yama/types": [".yama/types.ts"],
+      "@gen/db": [".yama/gen/db"],
+      "@gen/sdk": [".yama/gen/sdk"],
+      "@gen/types": [".yama/gen/types.ts"],
     };
 
     // Write back

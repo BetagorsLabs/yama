@@ -20,6 +20,8 @@ import { schemaEnvCommand } from "./commands/schema-env.ts";
 import { schemaTrashCommand } from "./commands/schema-trash.ts";
 import { schemaRestoreCommand } from "./commands/schema-restore.ts";
 import { pluginListCommand, pluginInstallCommand, pluginValidateCommand } from "./commands/plugin.ts";
+import { dbListCommand } from "./commands/db-list.ts";
+import { dbInspectCommand } from "./commands/db-inspect.ts";
 
 const program = new Command();
 
@@ -238,6 +240,28 @@ pluginCommand
   .command("validate")
   .description("Validate all installed service plugins")
   .action(pluginValidateCommand);
+
+// Database inspection
+const dbCommand = program
+  .command("db")
+  .description("Database inspection and management");
+
+dbCommand
+  .command("list")
+  .description("List all database tables with row counts")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("--env <env>", "Environment", "development")
+  .action(dbListCommand);
+
+dbCommand
+  .command("inspect")
+  .description("Inspect a specific table (schema and sample data)")
+  .argument("<table>", "Table name to inspect")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("--env <env>", "Environment", "development")
+  .action(async (table, options) => {
+    await dbInspectCommand(table, options);
+  });
 
 program.parse();
 

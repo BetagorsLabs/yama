@@ -24,6 +24,28 @@ import { generateMigrationNameFromBranch } from "../utils/git-utils.ts";
 import { getDatabasePlugin } from "../utils/db-plugin.ts";
 
 /**
+ * Normalize entities to ensure table names are set
+ */
+function normalizeEntities(entities: YamaEntities): YamaEntities {
+  const normalized: YamaEntities = {};
+  
+  for (const [entityName, entityDef] of Object.entries(entities)) {
+    // Convert entity name to snake_case for table name if not specified
+    const defaultTableName = entityName
+      .replace(/([A-Z])/g, '_$1')
+      .toLowerCase()
+      .replace(/^_/, ''); // Remove leading underscore
+    
+    normalized[entityName] = {
+      ...entityDef,
+      table: entityDef.table || defaultTableName
+    };
+  }
+  
+  return normalized;
+}
+
+/**
  * Read current database schema and convert to Model
  */
 async function readCurrentModelFromDB(sql: any): Promise<Model> {
@@ -240,11 +262,14 @@ export async function schemaGenerateCommand(options: SchemaGenerateOptions): Pro
       process.exit(1);
     }
 
+    // Normalize entities to ensure table names are set
+    const normalizedEntities = normalizeEntities(config.entities);
+
     const configDir = getConfigDir(configPath);
     const migrationsDir = join(configDir, "migrations");
 
     // Compute target model
-    const targetModel = entitiesToModel(config.entities);
+    const targetModel = entitiesToModel(normalizedEntities);
     const targetHash = targetModel.hash;
 
     // Get current model hash from database
@@ -252,7 +277,7 @@ export async function schemaGenerateCommand(options: SchemaGenerateOptions): Pro
     if (config.database) {
       try {
         const dbPlugin = await getDatabasePlugin();
-        dbPlugin.client.initDatabase(config.database);
+        await dbPlugin.client.initDatabase(config.database);
         const sql = dbPlugin.client.getSQL();
 
         // Ensure migration tables exist
@@ -315,7 +340,7 @@ export async function schemaGenerateCommand(options: SchemaGenerateOptions): Pro
     
     if (!fromHash || fromHash === "") {
       // First migration - create all tables from entities
-      for (const [entityName, entityDef] of Object.entries(config.entities)) {
+      for (const [entityName, entityDef] of Object.entries(normalizedEntities)) {
         const columns = Object.entries(entityDef.fields).map(([fieldName, field]) => {
           const dbColumnName = field.dbColumn || fieldName;
           let sqlType = field.dbType || field.type.toUpperCase();
@@ -413,7 +438,7 @@ export async function schemaGenerateCommand(options: SchemaGenerateOptions): Pro
 
       try {
         const dbPlugin = await getDatabasePlugin();
-        dbPlugin.client.initDatabase(config.database);
+        await dbPlugin.client.initDatabase(config.database);
         const sql = dbPlugin.client.getSQL();
 
         // Read current database schema
@@ -427,7 +452,7 @@ export async function schemaGenerateCommand(options: SchemaGenerateOptions): Pro
         }
 
         // Compute target model from yama.yaml
-        const targetModel = entitiesToModel(config.entities);
+        const targetModel = entitiesToModel(normalizedEntities);
 
         // Compute diff
         const diff = computeDiff(currentModel, targetModel);

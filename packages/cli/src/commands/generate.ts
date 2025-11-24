@@ -184,6 +184,26 @@ async function generateTypesFile(
   }
 }
 
+// Normalize entities to ensure table names are set
+function normalizeEntities(entities: YamaEntities): YamaEntities {
+  const normalized: YamaEntities = {};
+  
+  for (const [entityName, entityDef] of Object.entries(entities)) {
+    // Convert entity name to snake_case for table name if not specified
+    const defaultTableName = entityName
+      .replace(/([A-Z])/g, '_$1')
+      .toLowerCase()
+      .replace(/^_/, ''); // Remove leading underscore
+    
+    normalized[entityName] = {
+      ...entityDef,
+      table: entityDef.table || defaultTableName
+    };
+  }
+  
+  return normalized;
+}
+
 async function generateDatabaseCode(
   entities: YamaEntities,
   configDir: string,
@@ -195,34 +215,37 @@ async function generateDatabaseCode(
     const dbOutputDir = getDbDir(configDir);
     ensureDir(dbOutputDir);
 
-    // Calculate types import path (from .yama/db/ to .yama/types.ts)
+    // Normalize entities to ensure table names are set
+    const normalizedEntities = normalizeEntities(entities);
+
+    // Calculate types import path (from .yama/gen/db/ to .yama/gen/types.ts)
     const typesImportPath = "../types.ts";
 
     // Generate Drizzle schema
     const dbPlugin = await getDatabasePlugin(configPlugins, configPath);
-    const drizzleSchema = dbPlugin.schema.generateDrizzleSchema(entities);
+    const drizzleSchema = dbPlugin.schema.generateDrizzleSchema(normalizedEntities);
     const drizzleSchemaPath = join(dbOutputDir, "schema.ts");
     writeFileSync(drizzleSchemaPath, drizzleSchema, "utf-8");
-    console.log(`✅ Generated Drizzle schema: .yama/db/schema.ts`);
+    console.log(`✅ Generated Drizzle schema: .yama/gen/db/schema.ts`);
 
     // Generate mapper
-    const mapper = dbPlugin.codegen.generateMapper(entities, typesImportPath);
+    const mapper = dbPlugin.codegen.generateMapper(normalizedEntities, typesImportPath);
     const mapperPath = join(dbOutputDir, "mapper.ts");
     writeFileSync(mapperPath, mapper, "utf-8");
-    console.log(`✅ Generated mapper: .yama/db/mapper.ts`);
+    console.log(`✅ Generated mapper: .yama/gen/db/mapper.ts`);
 
     // Generate repository
-    const { repository, types } = dbPlugin.codegen.generateRepository(entities, typesImportPath);
+    const { repository, types } = dbPlugin.codegen.generateRepository(normalizedEntities, typesImportPath);
     const repositoryPath = join(dbOutputDir, "repository.ts");
     writeFileSync(repositoryPath, repository, "utf-8");
-    console.log(`✅ Generated repository: .yama/db/repository.ts`);
+    console.log(`✅ Generated repository: .yama/gen/db/repository.ts`);
 
     const repositoryTypesPath = join(dbOutputDir, "repository-types.ts");
     writeFileSync(repositoryTypesPath, types, "utf-8");
-    console.log(`✅ Generated repository types: .yama/db/repository-types.ts`);
+    console.log(`✅ Generated repository types: .yama/gen/db/repository-types.ts`);
 
     // Generate index.ts with exports
-    const entityNames = Object.keys(entities);
+    const entityNames = Object.keys(normalizedEntities);
     const indexContent = `// Auto-generated - do not edit
 export * from "./schema.ts";
 export * from "./mapper.ts";
@@ -237,7 +260,7 @@ ${entityNames.map(name => {
 `;
     const indexPath = join(dbOutputDir, "index.ts");
     writeFileSync(indexPath, indexContent, "utf-8");
-    console.log(`✅ Generated index: .yama/db/index.ts`);
+    console.log(`✅ Generated index: .yama/gen/db/index.ts`);
   } catch (error) {
     console.error("❌ Failed to generate database code:", error instanceof Error ? error.message : String(error));
     throw error;
@@ -256,7 +279,7 @@ async function generateSdkFile(
     const outputDir = dirname(absoluteOutputPath);
     
     // Calculate relative path from SDK to types file for import
-    // From .yama/sdk/ to .yama/types.ts
+    // From .yama/gen/sdk/ to .yama/gen/types.ts
     const typesImportPath = "../types.ts";
 
     const sdkContent = generateSDK(
@@ -279,7 +302,7 @@ export * from "./client.ts";
 `;
     const indexPath = join(sdkDir, "index.ts");
     writeFileSync(indexPath, indexContent, "utf-8");
-    console.log(`✅ Generated index: .yama/sdk/index.ts`);
+    console.log(`✅ Generated index: .yama/gen/sdk/index.ts`);
   } catch (error) {
     console.error("❌ Failed to generate SDK:", error instanceof Error ? error.message : String(error));
     throw error;

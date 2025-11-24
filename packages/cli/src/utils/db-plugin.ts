@@ -21,10 +21,11 @@ export async function getDatabasePlugin(
       : Object.keys(configPlugins);
     
     for (const pluginName of pluginList) {
-      // Check if it's a database plugin
-      if (pluginName.includes("db-")) {
-        try {
-          const plugin = await loadPlugin(pluginName, projectDir);
+      try {
+        const plugin = await loadPlugin(pluginName, projectDir);
+        
+        // Check if it's a database plugin by category
+        if (plugin.category === "database") {
           const pluginConfig = typeof configPlugins === "object" && !Array.isArray(configPlugins)
             ? configPlugins[pluginName] || {}
             : {};
@@ -32,10 +33,10 @@ export async function getDatabasePlugin(
           // Initialize plugin and get API
           const api = await plugin.init(pluginConfig);
           return api;
-        } catch (error) {
-          // Log error but continue to try other methods
-          console.warn(`⚠️  Failed to load plugin ${pluginName}:`, error instanceof Error ? error.message : String(error));
         }
+      } catch (error) {
+        // Log error but continue to try other methods
+        console.warn(`⚠️  Failed to load plugin ${pluginName}:`, error instanceof Error ? error.message : String(error));
       }
     }
   }
@@ -45,7 +46,7 @@ export async function getDatabasePlugin(
   
   // If not found, try to load common database plugins
   if (!dbPlugin) {
-    const commonPlugins = ["@yama/postgres"];
+    const commonPlugins = ["@yama/pglite", "@yama/postgres"];
     for (const pluginName of commonPlugins) {
       try {
         dbPlugin = await loadPlugin(pluginName, projectDir);
@@ -59,7 +60,7 @@ export async function getDatabasePlugin(
   }
   
   if (!dbPlugin) {
-    throw new Error("No database plugin found. Please install @yama/postgres");
+    throw new Error("No database plugin found. Please install @yama/pglite or @yama/postgres");
   }
   
   // Initialize plugin and get API

@@ -11,7 +11,7 @@
     "entryPoint": "./dist/plugin.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/build.mjs",
     "dev": "tsc -w -p tsconfig.build.json",
     "lint": "echo \"no lint yet\"",
     "test": "vitest",
@@ -27,7 +27,8 @@
   "devDependencies": {
     "rimraf": "^5.0.0",
     "@types/node": "^20.0.0",
-    "vitest": "^1.0.0"
+    "vitest": "^1.0.0",
+    "esbuild": "^0.27.0"
   }
 }
 

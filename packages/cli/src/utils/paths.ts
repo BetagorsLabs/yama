@@ -13,21 +13,21 @@ export function getYamaDir(configDir: string): string {
  * Get the database code directory path
  */
 export function getDbDir(configDir: string): string {
-  return join(configDir, ".yama", "db");
+  return join(configDir, ".yama", "gen", "db");
 }
 
 /**
  * Get the SDK directory path
  */
 export function getSdkDir(configDir: string): string {
-  return join(configDir, ".yama", "sdk");
+  return join(configDir, ".yama", "gen", "sdk");
 }
 
 /**
  * Get the types file path
  */
 export function getTypesPath(configDir: string): string {
-  return join(configDir, ".yama", "types.ts");
+  return join(configDir, ".yama", "gen", "types.ts");
 }
 
 /**

@@ -73,7 +73,7 @@ export async function schemaApplyCommand(options: SchemaApplyOptions): Promise<v
 
     // Initialize database
     const dbPlugin = await getDatabasePlugin();
-    dbPlugin.client.initDatabase(config.database);
+    await dbPlugin.client.initDatabase(config.database);
     const sql = dbPlugin.client.getSQL();
 
     // Create migration tables
@@ -81,9 +81,9 @@ export async function schemaApplyCommand(options: SchemaApplyOptions): Promise<v
     await sql.unsafe(dbPlugin.migrations.getMigrationRunsTableSQL());
 
     // Get applied migrations
-    const appliedMigrations = await sql`
+    const appliedMigrations = await sql.unsafe(`
       SELECT name, to_model_hash FROM _yama_migrations ORDER BY applied_at
-    `;
+    `);
     const appliedNames = new Set(
       (appliedMigrations as unknown as Array<{ name: string }>).map((m) => m.name)
     );
@@ -247,11 +247,11 @@ export async function schemaApplyCommand(options: SchemaApplyOptions): Promise<v
         const runStart = Date.now();
 
         // Start migration run
-        const runResult = await sql`
+        const runResult = await sql.unsafe(`
           INSERT INTO _yama_migration_runs (migration_id, status, started_at)
           VALUES (NULL, 'running', NOW())
           RETURNING id
-        `;
+        `);
         const runId = runResult[0]?.id;
 
         // Execute migration in transaction
@@ -259,26 +259,26 @@ export async function schemaApplyCommand(options: SchemaApplyOptions): Promise<v
           await tx.unsafe(sqlContent);
 
           // Record migration
-          await tx`
+          await tx.unsafe(`
             INSERT INTO _yama_migrations (
               name, type, from_model_hash, to_model_hash, checksum, description
             ) VALUES (
-              ${file},
-              ${migration.type},
-              ${migration.from_model.hash},
-              ${migration.to_model.hash},
-              ${checksum},
-              ${migration.metadata.description || null}
+              '${file}',
+              '${migration.type}',
+              '${migration.from_model.hash}',
+              '${migration.to_model.hash}',
+              '${checksum}',
+              ${migration.metadata.description ? `'${migration.metadata.description.replace(/'/g, "''")}'` : 'NULL'}
             )
-          `;
+          `);
 
           // Update run status
           if (runId) {
-            await tx`
+            await tx.unsafe(`
               UPDATE _yama_migration_runs
               SET status = 'completed', finished_at = NOW()
               WHERE id = ${runId}
-            `;
+            `);
           }
         });
 

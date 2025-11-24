@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Global CLI tool for Yama - API framework",
   "bin": {
-    "yama": "src/cli.ts"
+    "yama": "dist/cli/src/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/build.mjs",

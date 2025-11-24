@@ -36,16 +36,16 @@ export function detectProjectType(cwd: string = process.cwd()): ProjectType {
 
 /**
  * Infer the output path for generated files based on project type
- * Now uses .yama/ directory structure
+ * Now uses .yama/gen/ directory structure
  */
 export function inferOutputPath(
   projectType: ProjectType,
   type: "types" | "sdk" = "types"
 ): string {
-  // All projects now use .yama/ structure
+  // All projects now use .yama/gen/ structure
   return type === "types"
-    ? ".yama/types.ts"
-    : ".yama/sdk/client.ts";
+    ? ".yama/gen/types.ts"
+    : ".yama/gen/sdk/client.ts";
 }
 
 /**

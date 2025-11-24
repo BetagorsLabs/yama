@@ -384,6 +384,11 @@ export async function createCommand(projectName?: string, options: CreateOptions
       name: finalProjectName,
       version: "0.1.0",
       type: "module",
+      exports: {
+        "@gen/db": "./.yama/gen/db/index.ts",
+        "@gen/types": "./.yama/gen/types.ts",
+        "@gen/sdk": "./.yama/gen/sdk/index.ts",
+      },
       scripts: {
         yama: yamaExec, // Allows: pnpm yama <command>
         dev: yamaExec + " dev", // Use node directly to ensure yama is found
@@ -400,6 +405,37 @@ export async function createCommand(projectName?: string, options: CreateOptions
     }
     
     writeFileSync(join(projectPath, "package.json"), JSON.stringify(packageJson, null, 2) + "\n");
+    
+    // Create tsconfig.json
+    const tsconfigPath = join(projectPath, "tsconfig.json");
+    if (!existsSync(tsconfigPath)) {
+      const tsconfig = {
+        compilerOptions: {
+          target: "ES2020",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          strict: true,
+          esModuleInterop: true,
+          skipLibCheck: true,
+          resolveJsonModule: true,
+          baseUrl: ".",
+          paths: {
+            "@gen/db": [".yama/gen/db"],
+            "@gen/sdk": [".yama/gen/sdk"],
+            "@gen/types": [".yama/gen/types.ts"],
+          },
+        },
+        include: [
+          "src/**/*",
+          ".yama/**/*",
+        ],
+        exclude: [
+          "node_modules",
+        ],
+      };
+      writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2) + "\n");
+    }
+    
     spinner.succeed("Created project structure");
   } catch (err) {
     spinner.fail("Failed to create project structure");
@@ -463,7 +499,7 @@ ${yamlContent}`;
   const handlerSpinner = createSpinner("Creating example handler...");
   try {
     const handlerContent = `import type { HttpRequest, HttpResponse } from "@yama/core";
-import type { Example } from "@yama/types";
+import type { Example } from "@gen/types";
 
 export async function getExamples(
   request: HttpRequest,

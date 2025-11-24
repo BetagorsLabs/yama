@@ -61,7 +61,7 @@ interface YamaConfig {
 type HandlerFunction = RouteHandler;
 
 /**
- * Resolve @yama/* imports using package.json exports
+ * Resolve @yama/* and @gen/* imports using package.json exports
  */
 function resolveYamaImports(handlerContent: string, projectRoot: string, fromPath: string): string {
   try {
@@ -73,10 +73,10 @@ function resolveYamaImports(handlerContent: string, projectRoot: string, fromPat
     const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
     const exports = packageJson.exports || {};
 
-    // Replace @yama/* imports with resolved paths
+    // Replace @yama/* and @gen/* imports with resolved paths
     let resolvedContent = handlerContent;
     for (const [exportPath, exportValue] of Object.entries(exports)) {
-      if (exportPath.startsWith("@yama/")) {
+      if (exportPath.startsWith("@yama/") || exportPath.startsWith("@gen/")) {
         let resolvedPath: string;
         if (typeof exportValue === "string") {
           resolvedPath = exportValue;
@@ -154,7 +154,7 @@ async function loadHandlers(handlersDir: string, projectRoot?: string): Promise<
         let handlerContent = readFileSync(handlerPath, "utf-8");
         let importPath = handlerPath;
         
-        // Resolve @yama/* imports if package.json exists
+        // Resolve @yama/* and @gen/* imports if package.json exists
         if (existsSync(packageJsonPath)) {
           // Determine where the file will be located (temp file or original)
           const tempDir = join(tmpdir(), "yama-handlers");
@@ -686,8 +686,8 @@ export async function startYamaNodeRuntime(
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.ts"></script>
-  <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.ts"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
   <script>
     window.onload = function() {
       const spec = ${specJson};
