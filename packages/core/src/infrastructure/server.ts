@@ -45,7 +45,8 @@ export interface HandlerContext {
   status(code: number): HandlerContext;
   
   // Framework services (for future extensibility)
-  db?: unknown;
+  db?: unknown; // Direct database adapter access
+  entities?: Record<string, unknown>; // Entity repositories (e.g., context.entities.Product)
   logger?: {
     info(message: string): void;
     warn(message: string): void;

@@ -26,6 +26,7 @@ import { addCommand } from "./commands/add.ts";
 import { addEndpointCommand } from "./commands/add-endpoint.ts";
 import { addSchemaCommand } from "./commands/add-schema.ts";
 import { addEntityCommand } from "./commands/add-entity.ts";
+import { addHandlerCommand } from "./commands/add-handler.ts";
 
 const program = new Command();
 
@@ -149,6 +150,16 @@ program
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .action(async (options) => {
     await addEntityCommand(options);
+  });
+
+program
+  .command("add:handler")
+  .alias("add-handler")
+  .description("Add a new handler")
+  .requiredOption("-n, --name <name>", "Handler name (required)")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .action(async (options) => {
+    await addHandlerCommand(options);
   });
 
 program

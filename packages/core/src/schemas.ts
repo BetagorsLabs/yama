@@ -237,7 +237,7 @@ export function createSchemaValidator(): SchemaValidator {
 }
 
 // Authentication/Authorization types
-export type AuthProviderType = "jwt" | "api-key";
+export type AuthProviderType = "jwt" | "api-key" | "basic" | string; // string allows for oauth-* providers
 
 export interface JwtAuthProvider {
   type: "jwt";
@@ -253,7 +253,33 @@ export interface ApiKeyAuthProvider {
   validate?: (apiKey: string) => Promise<boolean> | boolean;
 }
 
-export type AuthProvider = JwtAuthProvider | ApiKeyAuthProvider;
+export interface BasicAuthProviderStatic {
+  type: "basic";
+  mode: "static";
+  identifier: string;
+  password: string;
+}
+
+export interface BasicAuthProviderDatabase {
+  type: "basic";
+  mode: "database";
+  userEntity: string;
+  identifierField?: string; // Field to match identifier against (e.g., "email", "username")
+  passwordField?: string; // Field containing password hash (default: "passwordHash")
+}
+
+export type BasicAuthProvider = BasicAuthProviderStatic | BasicAuthProviderDatabase;
+
+export interface OAuthAuthProvider {
+  type: string; // e.g., "oauth-google", "oauth-github"
+  clientId: string;
+  clientSecret: string;
+  redirectUri?: string;
+  autoGenerateEndpoints?: boolean; // Default: true
+  [key: string]: unknown; // Allow provider-specific config
+}
+
+export type AuthProvider = JwtAuthProvider | ApiKeyAuthProvider | BasicAuthProvider | OAuthAuthProvider;
 
 export interface AuthConfig {
   providers: AuthProvider[];
@@ -275,6 +301,25 @@ export interface AuthContext {
   };
   provider?: string;
   token?: string;
+}
+
+// Rate limiting types
+export type RateLimitKeyStrategy = "ip" | "user" | "both";
+export type RateLimitStoreType = "memory" | "redis";
+
+export interface RateLimitConfig {
+  maxRequests: number;
+  windowMs: number;
+  keyBy?: RateLimitKeyStrategy;
+  store?: RateLimitStoreType;
+  redis?: {
+    url?: string;
+    host?: string;
+    port?: number;
+    password?: string;
+    db?: number;
+    [key: string]: unknown;
+  };
 }
 
 

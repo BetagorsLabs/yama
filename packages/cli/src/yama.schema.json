@@ -127,12 +127,144 @@
                   }
                 },
                 "required": ["type", "header"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["basic"]
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": ["static", "database"],
+                    "description": "Validation mode: 'static' for hardcoded credentials, 'database' for database lookup"
+                  },
+                  "identifier": {
+                    "type": "string",
+                    "description": "Identifier (username, email, etc.) for static mode"
+                  },
+                  "password": {
+                    "type": "string",
+                    "description": "Password for static mode"
+                  },
+                  "userEntity": {
+                    "type": "string",
+                    "description": "Entity name to query for database mode (e.g., 'User')"
+                  },
+                  "identifierField": {
+                    "type": "string",
+                    "description": "Field name to match identifier against in database mode (default: 'email')"
+                  },
+                  "passwordField": {
+                    "type": "string",
+                    "description": "Field name containing password hash in database mode (default: 'passwordHash')"
+                  }
+                },
+                "required": ["type", "mode"],
+                "oneOf": [
+                  {
+                    "properties": {
+                      "mode": { "const": "static" }
+                    },
+                    "required": ["identifier", "password"]
+                  },
+                  {
+                    "properties": {
+                      "mode": { "const": "database" }
+                    },
+                    "required": ["userEntity"]
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "pattern": "^oauth-",
+                    "description": "OAuth provider type (e.g., 'oauth-google', 'oauth-github')"
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "description": "OAuth client ID"
+                  },
+                  "clientSecret": {
+                    "type": "string",
+                    "description": "OAuth client secret"
+                  },
+                  "redirectUri": {
+                    "type": "string",
+                    "description": "OAuth redirect URI"
+                  },
+                  "autoGenerateEndpoints": {
+                    "type": "boolean",
+                    "description": "Auto-generate OAuth endpoints (default: true)",
+                    "default": true
+                  }
+                },
+                "required": ["type", "clientId", "clientSecret"]
               }
             ]
           }
         }
       },
       "required": ["providers"]
+    },
+    "rateLimit": {
+      "type": "object",
+      "description": "Global rate limiting configuration",
+      "properties": {
+        "maxRequests": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of requests allowed in the window"
+        },
+        "windowMs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Time window in milliseconds"
+        },
+        "keyBy": {
+          "type": "string",
+          "enum": ["ip", "user", "both"],
+          "default": "ip",
+          "description": "How to identify clients: 'ip' (by IP address), 'user' (by authenticated user ID), or 'both'"
+        },
+        "store": {
+          "type": "string",
+          "enum": ["memory", "redis"],
+          "default": "memory",
+          "description": "Storage backend: 'memory' (in-memory, single-instance) or 'redis' (distributed)"
+        },
+        "redis": {
+          "type": "object",
+          "description": "Redis configuration (required if store is 'redis')",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "Redis connection URL (e.g., 'redis://localhost:6379')"
+            },
+            "host": {
+              "type": "string",
+              "description": "Redis host (default: 'localhost')"
+            },
+            "port": {
+              "type": "integer",
+              "description": "Redis port (default: 6379)"
+            },
+            "password": {
+              "type": "string",
+              "description": "Redis password"
+            },
+            "db": {
+              "type": "integer",
+              "description": "Redis database number"
+            }
+          }
+        }
+      },
+      "required": ["maxRequests", "windowMs"]
     },
     "entities": {
       "type": "object",
@@ -306,7 +438,7 @@
                             }
                           }
                         },
-                        "description": "Method-specific configuration (e.g., { 'GET': { auth: { required: true } } })"
+                        "description": "Method-specific configuration. Supports individual methods (e.g., 'GET', 'POST') or method groups: 'read' (GET), 'write'/'mutate' (POST, PUT, PATCH, DELETE), 'create' (POST), 'update' (PUT, PATCH), 'delete' (DELETE). Example: { 'read': { auth: { required: false } }, 'write': { auth: { required: true, roles: ['admin'] } } }"
                       }
                     ]
                   },
@@ -480,6 +612,28 @@
                 "description": "Provider type or name to use"
               }
             }
+          },
+          "rateLimit": {
+            "type": "object",
+            "description": "Per-endpoint rate limiting configuration (overrides global)",
+            "properties": {
+              "maxRequests": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum number of requests allowed in the window"
+              },
+              "windowMs": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Time window in milliseconds"
+              },
+              "keyBy": {
+                "type": "string",
+                "enum": ["ip", "user", "both"],
+                "description": "How to identify clients (overrides global setting)"
+              }
+            },
+            "required": ["maxRequests", "windowMs"]
           }
         },
         "required": ["path", "method"]

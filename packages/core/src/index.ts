@@ -23,6 +23,17 @@ export {
   type AuthProviderType,
   type JwtAuthProvider,
   type ApiKeyAuthProvider,
+  type BasicAuthProvider,
+  type BasicAuthProviderStatic,
+  type BasicAuthProviderDatabase,
+  type OAuthAuthProvider,
+} from "./schemas";
+
+// Export rate limiting types from schemas
+export {
+  type RateLimitConfig,
+  type RateLimitKeyStrategy,
+  type RateLimitStoreType,
 } from "./schemas";
 
 // Export auth functions
@@ -31,6 +42,43 @@ export {
   authorizeRequest,
   authenticateAndAuthorize,
 } from "./auth";
+
+// Export auth provider registry functions
+export {
+  registerAuthProvider,
+  getAuthProvider,
+  registerOAuthProvider,
+  getOAuthProvider,
+  getAllOAuthProviders,
+  getRegisteredProviderTypes,
+} from "./auth/registry";
+
+// Export rate limiting functions
+export {
+  createRateLimiter,
+  createRateLimiterFromConfig,
+  formatRateLimitHeaders,
+  type RateLimiter,
+  type RateLimitResult,
+  type RateLimitStore,
+  createMemoryRateLimitStore,
+  MemoryRateLimitStore,
+  createRedisRateLimitStore,
+  RedisRateLimitStore,
+} from "./rate-limit";
+
+// Export auth provider types
+export {
+  type AuthProviderHandler,
+  type AuthResult,
+  type OAuthProviderMetadata,
+} from "./auth/types";
+
+// Export database registry
+export {
+  registerGlobalDatabaseAdapter,
+  getGlobalDatabaseAdapter,
+} from "./infrastructure/database-registry";
 
 // Export type generation
 export { generateTypes } from "./typegen";

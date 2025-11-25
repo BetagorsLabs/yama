@@ -48,10 +48,19 @@ export interface CrudConfig {
   /**
    * Enable CRUD endpoint generation for this entity
    * Can be:
-   * - `true` - Generate all CRUD endpoints (GET, POST, PUT, DELETE)
+   * - `true` - Generate all CRUD endpoints (GET, POST, PUT, PATCH, DELETE)
    * - `false` - Don't generate CRUD endpoints
    * - Array of methods to generate (e.g., ["GET", "POST"])
-   * - Object with method-specific config (e.g., { "GET": { auth: { required: true } } })
+   * - Object with method-specific config:
+   *   - Individual methods: { "GET": { auth: { required: false } } }
+   *   - Method groups: { "read": { auth: { required: false } }, "write": { auth: { required: true, roles: ["admin"] } } }
+   * 
+   * Method groups available:
+   * - `read` - GET methods
+   * - `write` or `mutate` - POST, PUT, PATCH, DELETE methods
+   * - `create` - POST method
+   * - `update` - PUT, PATCH methods
+   * - `delete` - DELETE method
    */
   enabled?: boolean | string[] | Record<string, { auth?: { required?: boolean; roles?: string[] }; path?: string }>;
   /**
@@ -60,7 +69,7 @@ export interface CrudConfig {
    */
   path?: string;
   /**
-   * Auth configuration applied to all CRUD endpoints (can be overridden per method)
+   * Auth configuration applied to all CRUD endpoints (can be overridden per method or method group)
    */
   auth?: {
     required?: boolean;

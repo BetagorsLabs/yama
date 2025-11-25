@@ -11,6 +11,7 @@ Welcome to the Yama JS documentation. This directory contains guides and referen
 ### Development
 
 - **[Development Scripts](./development-scripts.md)** - All available build and development scripts, common workflows, and troubleshooting
+- **[Roadmap](./ROADMAP.md)** - Planned features and enhancements for YAMA
 
 ## Contributing
 
@@ -25,4 +26,5 @@ When adding new documentation:
 
 - [Main README](../../README.md) - Project overview and philosophy
 - [Development Scripts](./development-scripts.md) - Scripts reference
+- [Roadmap](./ROADMAP.md) - Planned features and enhancements
 

@@ -1,118 +1,13 @@
-import jwt from "jsonwebtoken";
 import {
   type AuthProvider,
   type AuthConfig,
   type EndpointAuth,
   type AuthContext,
-  type JwtAuthProvider,
-  type ApiKeyAuthProvider,
 } from "./schemas";
+import { getAuthProvider } from "./auth/registry";
 
-/**
- * Resolve environment variable references in strings
- * Supports ${VAR_NAME} syntax
- */
-function resolveEnvVar(value: string): string {
-  return value.replace(/\$\{(\w+)\}/g, (_, varName) => {
-    const envValue = process.env[varName];
-    if (envValue === undefined) {
-      throw new Error(`Environment variable ${varName} is not set`);
-    }
-    return envValue;
-  });
-}
-
-/**
- * Validate JWT token
- */
-async function validateJwt(
-  token: string,
-  provider: JwtAuthProvider
-): Promise<{ valid: boolean; payload?: jwt.JwtPayload; error?: string }> {
-  try {
-    const secret = resolveEnvVar(provider.secret);
-    const options: jwt.VerifyOptions = {};
-
-    if (provider.algorithm) {
-      options.algorithms = [provider.algorithm as jwt.Algorithm];
-    }
-    if (provider.issuer) {
-      options.issuer = provider.issuer;
-    }
-    if (provider.audience) {
-      options.audience = provider.audience;
-    }
-
-    const payload = jwt.verify(token, secret, options) as jwt.JwtPayload;
-    return { valid: true, payload };
-  } catch (error) {
-    return {
-      valid: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-/**
- * Validate API key
- */
-async function validateApiKey(
-  apiKey: string,
-  provider: ApiKeyAuthProvider
-): Promise<{ valid: boolean; error?: string }> {
-  if (provider.validate) {
-    try {
-      const isValid = await provider.validate(apiKey);
-      return { valid: isValid };
-    } catch (error) {
-      return {
-        valid: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-  // If no custom validator, accept any non-empty key
-  // In production, you should always provide a validator
-  return { valid: apiKey.length > 0 };
-}
-
-/**
- * Extract token from Authorization header
- */
-function extractBearerToken(authHeader?: string): string | null {
-  if (!authHeader) return null;
-  const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  return match ? match[1] : null;
-}
-
-/**
- * Create auth context from JWT payload
- */
-function createAuthContextFromJwt(
-  payload: jwt.JwtPayload,
-  provider: string
-): AuthContext {
-  return {
-    authenticated: true,
-    user: {
-      id: payload.sub || payload.id,
-      email: payload.email,
-      roles: payload.roles || payload.role ? [].concat(payload.roles || payload.role) : undefined,
-      ...payload,
-    },
-    provider,
-  };
-}
-
-/**
- * Create auth context from API key
- */
-function createAuthContextFromApiKey(provider: string): AuthContext {
-  return {
-    authenticated: true,
-    provider,
-  };
-}
+// Import built-in providers to trigger registration
+import "./auth/providers";
 
 /**
  * Authenticate request using configured providers
@@ -123,35 +18,29 @@ export async function authenticateRequest(
 ): Promise<{ context: AuthContext; error?: string }> {
   // Try each provider in order
   for (const provider of authConfig.providers) {
-    if (provider.type === "jwt") {
-      const token = extractBearerToken(headers.authorization);
-      if (token) {
-        const result = await validateJwt(token, provider);
-        if (result.valid && result.payload) {
-          return {
-            context: createAuthContextFromJwt(result.payload, "jwt"),
-          };
-        }
-        // Continue to next provider if JWT validation fails
-      }
-    } else if (provider.type === "api-key") {
-      const apiKey = headers[provider.header.toLowerCase()];
-      if (apiKey) {
-        const result = await validateApiKey(apiKey, provider);
-        if (result.valid) {
-          return {
-            context: createAuthContextFromApiKey("api-key"),
-          };
-        }
-        // Continue to next provider if API key validation fails
-      }
+    const handler = getAuthProvider(provider.type);
+    
+    if (!handler) {
+      // Provider type not registered - skip and continue to next
+      continue;
     }
+
+    // Validate using the provider handler
+    const result = await handler.validate(headers, provider);
+    
+    if (result.valid) {
+      return {
+        context: result.context,
+      };
+    }
+    
+    // Continue to next provider if validation fails
   }
 
   // No provider succeeded
   return {
     context: { authenticated: false },
-    error: "Authentication failed: no valid token or API key provided",
+    error: "Authentication failed: no valid credentials provided",
   };
 }
 

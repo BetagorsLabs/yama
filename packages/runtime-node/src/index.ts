@@ -28,6 +28,13 @@ import {
   generateAllCrudEndpoints,
   generateCrudInputSchemas,
   generateArraySchema,
+  registerGlobalDatabaseAdapter,
+  getAllOAuthProviders,
+  type OAuthProviderMetadata,
+  type RateLimitConfig,
+  createRateLimiterFromConfig,
+  type RateLimiter,
+  formatRateLimitHeaders,
 } from "@betagors/yama-core";
 import { generateOpenAPI } from "@betagors/yama-docs-generator";
 import { createFastifyAdapter } from "@betagors/yama-http-fastify";
@@ -45,6 +52,7 @@ interface YamaConfig {
   entities?: YamaEntities;
   server?: ServerConfig;
   auth?: AuthConfig;
+  rateLimit?: RateLimitConfig;
   plugins?: Record<string, Record<string, unknown>> | string[]; // Plugin configs or list of plugin names
   endpoints?: Array<{
     path: string;
@@ -60,6 +68,7 @@ interface YamaConfig {
       type: string;
     };
     auth?: EndpointAuth;
+    rateLimit?: RateLimitConfig;
   }>;
 }
 
@@ -209,6 +218,61 @@ async function loadHandlers(handlersDir: string, projectRoot?: string): Promise<
 }
 
 /**
+ * Load entity repositories from generated database code
+ * Maps entity names to repository instances (e.g., "Product" → productRepository)
+ */
+async function loadRepositories(
+  configDir: string,
+  entities?: YamaEntities
+): Promise<Record<string, unknown>> {
+  const repositories: Record<string, unknown> = {};
+
+  // If no entities defined, return empty object
+  if (!entities || Object.keys(entities).length === 0) {
+    return repositories;
+  }
+
+  // Construct path to .yama/gen/db/index.ts
+  const dbIndexPath = join(configDir, ".yama", "gen", "db", "index.ts");
+
+  // Check if repository index file exists
+  if (!existsSync(dbIndexPath)) {
+    console.warn(`⚠️  Repository index not found: ${dbIndexPath} (repositories may not be generated yet)`);
+    return repositories;
+  }
+
+  try {
+    // Convert to absolute path and then to file URL for ES module import
+    const absolutePath = resolve(dbIndexPath);
+    const fileUrl = pathToFileURL(absolutePath).href;
+
+    // Dynamic import for ES modules
+    const repositoryModule = await import(fileUrl);
+
+    // Map entity names to repository instances
+    // Entity "Product" → repository export "productRepository"
+    for (const entityName of Object.keys(entities)) {
+      const repositoryName = `${entityName.charAt(0).toLowerCase() + entityName.slice(1)}Repository`;
+      
+      if (repositoryName in repositoryModule) {
+        repositories[entityName] = repositoryModule[repositoryName];
+        console.log(`✅ Loaded repository: ${entityName} → ${repositoryName}`);
+      } else {
+        console.warn(`⚠️  Repository ${repositoryName} not found for entity ${entityName}`);
+      }
+    }
+  } catch (error) {
+    console.warn(
+      `⚠️  Failed to load repositories from ${dbIndexPath}:`,
+      error instanceof Error ? error.message : String(error)
+    );
+    // Return empty object on error - runtime continues without repositories
+  }
+
+  return repositories;
+}
+
+/**
  * Build a JSON schema for query parameter validation
  */
 function buildQuerySchema(
@@ -305,7 +369,9 @@ function coerceParams(
 function createHandlerContext(
   request: HttpRequest,
   reply: HttpResponse,
-  authContext?: { authenticated: boolean; user?: unknown; provider?: string; token?: string }
+  authContext?: { authenticated: boolean; user?: unknown; provider?: string; token?: string },
+  repositories?: Record<string, unknown>,
+  dbAdapter?: unknown
 ): HandlerContext {
   let statusCode: number | undefined;
   
@@ -321,6 +387,10 @@ function createHandlerContext(
     
     // Auth context
     auth: authContext,
+    
+    // Database access
+    db: dbAdapter,
+    entities: repositories,
     
     // Status helper
     status(code: number): HandlerContext {
@@ -361,6 +431,51 @@ function createDefaultHandler(
 }
 
 /**
+ * Determine if an endpoint requires authentication
+ * 
+ * Returns true if the endpoint needs authentication, false if it's public.
+ * 
+ * Logic (in order of precedence):
+ * 1. If endpoint.auth.required === false, it's explicitly public → return false
+ * 2. If endpoint.auth.required === true or endpoint.auth.roles exists, it requires auth → return true
+ * 3. If endpoint.auth exists (but no explicit required/roles), and config.auth exists → requires auth (default)
+ * 4. If no endpoint.auth but config.auth exists → requires auth (default behavior when global auth is configured)
+ * 5. If neither endpoint.auth nor config.auth exists → public endpoint
+ */
+function needsAuthentication(
+  config: YamaConfig,
+  endpoint: NonNullable<YamaConfig["endpoints"]>[number]
+): boolean {
+  const endpointAuth = endpoint.auth;
+  const configAuth = config.auth;
+
+  // Case 1: Explicitly public endpoint (highest priority)
+  if (endpointAuth?.required === false) {
+    return false;
+  }
+
+  // Case 2: Explicitly requires auth (required === true or roles specified)
+  if (endpointAuth?.required === true || (endpointAuth?.roles && endpointAuth.roles.length > 0)) {
+    return true;
+  }
+
+  // Case 3: Endpoint has auth config object but no explicit required flag
+  // If global auth exists, default to requiring auth
+  if (endpointAuth && configAuth) {
+    return true;
+  }
+
+  // Case 4: No endpoint auth config but global auth exists
+  // Default behavior: require auth when global auth is configured
+  if (!endpointAuth && configAuth) {
+    return true;
+  }
+
+  // Case 5: No auth configuration at all - public endpoint
+  return false;
+}
+
+/**
  * Register routes from YAML config with validation
  */
 function registerRoutes(
@@ -368,11 +483,17 @@ function registerRoutes(
   server: unknown,
   config: YamaConfig,
   handlers: Record<string, HandlerFunction>,
-  validator: ReturnType<typeof createSchemaValidator>
+  validator: ReturnType<typeof createSchemaValidator>,
+  globalRateLimiter: RateLimiter | null,
+  repositories?: Record<string, unknown>,
+  dbAdapter?: unknown
 ) {
   if (!config.endpoints) {
     return;
   }
+
+  // Cache for endpoint-specific rate limiters (keyed by config hash)
+  const endpointRateLimiters = new Map<string, RateLimiter>();
 
   for (const endpoint of config.endpoints) {
     const { path, method, handler: handlerName, description, params, body, query, response } = endpoint;
@@ -396,14 +517,24 @@ function registerRoutes(
       );
     }
 
+    // Determine if this endpoint requires authentication
+    // This check happens once at route registration time, not on every request
+    const requiresAuth = needsAuthentication(config, endpoint);
+
     // Wrap handler with validation and auth
     // The wrapped handler receives request/reply from the adapter, then creates context for user handlers
     const wrappedHandler: RouteHandler = async (request: HttpRequest, reply: HttpResponse) => {
       try {
-        // Authenticate and authorize request
+        // ============================================
+        // AUTHENTICATION & AUTHORIZATION
+        // ============================================
+        // Public endpoints: Skip auth entirely for better performance
+        // Secured endpoints: Authenticate and authorize before processing request
         let authContext: { authenticated: boolean; user?: unknown; provider?: string; token?: string } | undefined;
         
-        if (config.auth || endpoint.auth) {
+        if (requiresAuth) {
+          // --- SECURED ENDPOINT ---
+          // Authenticate using configured providers and authorize based on endpoint requirements
           const authResult = await authenticateAndAuthorize(
             request.headers,
             config.auth,
@@ -419,6 +550,56 @@ function registerRoutes(
           }
 
           authContext = authResult.context;
+        } else {
+          // --- PUBLIC ENDPOINT ---
+          // No authentication required - skip auth checks for performance
+          authContext = { authenticated: false };
+        }
+
+        // Check rate limit (after auth so we can use user ID if available)
+        const rateLimitConfig = endpoint.rateLimit || config.rateLimit;
+        if (rateLimitConfig) {
+          let rateLimiter = globalRateLimiter;
+          
+          // If no global rate limiter and endpoint has its own config, get or create endpoint-specific limiter
+          if (!rateLimiter && endpoint.rateLimit) {
+            const configKey = JSON.stringify(endpoint.rateLimit);
+            if (!endpointRateLimiters.has(configKey)) {
+              endpointRateLimiters.set(configKey, await createRateLimiterFromConfig(endpoint.rateLimit));
+            }
+            rateLimiter = endpointRateLimiters.get(configKey)!;
+          }
+          
+          // If still no rate limiter, create one from global config and cache it (shouldn't happen if globalRateLimiter initialized correctly)
+          if (!rateLimiter && config.rateLimit) {
+            const globalConfigKey = JSON.stringify(config.rateLimit);
+            if (!endpointRateLimiters.has(globalConfigKey)) {
+              endpointRateLimiters.set(globalConfigKey, await createRateLimiterFromConfig(config.rateLimit));
+            }
+            rateLimiter = endpointRateLimiters.get(globalConfigKey)!;
+          }
+          
+          if (rateLimiter) {
+            const rateLimitResult = await rateLimiter.check(request, authContext, rateLimitConfig);
+          
+            // Add rate limit headers to response
+            const rateLimitHeaders = formatRateLimitHeaders(rateLimitResult);
+            const originalReply = reply._original as any;
+            if (originalReply && typeof originalReply.header === "function") {
+              for (const [key, value] of Object.entries(rateLimitHeaders)) {
+                originalReply.header(key, value);
+              }
+            }
+            
+            if (!rateLimitResult.allowed) {
+              reply.status(429).send({
+                error: "Too Many Requests",
+                message: `Rate limit exceeded. Try again after ${Math.ceil(rateLimitResult.resetAfter / 1000)} seconds.`,
+                retryAfter: Math.ceil(rateLimitResult.resetAfter / 1000),
+              });
+              return;
+            }
+          }
         }
 
         // Validate and coerce path parameters if specified
@@ -478,7 +659,7 @@ function registerRoutes(
         }
 
         // Create handler context
-        const context = createHandlerContext(request, reply, authContext);
+        const context = createHandlerContext(request, reply, authContext, repositories, dbAdapter);
 
         // Call handler with context
         const result = await handlerFn(context);
@@ -543,9 +724,14 @@ function registerRoutes(
     // Register route using adapter
     serverAdapter.registerRoute(server, method, path, wrappedHandler);
 
+    // Log route registration with clear auth status
     const handlerLabel = handlerName || "default";
+    const authStatus = requiresAuth 
+      ? ` [SECURED${endpoint.auth?.roles ? `, roles: ${endpoint.auth.roles.join(", ")}` : ""}]`
+      : " [PUBLIC]";
+    
     console.log(
-      `✅ Registered route: ${method.toUpperCase()} ${path} -> ${handlerLabel}${description ? ` (${description})` : ""}${params ? ` [validates path params]` : ""}${query ? ` [validates query params]` : ""}${body?.type ? ` [validates body: ${body.type}]` : ""}${response?.type ? ` [validates response: ${response.type}]` : ""}${endpoint.auth ? ` [auth: ${endpoint.auth.required !== false ? "required" : "optional"}${endpoint.auth.roles ? `, roles: ${endpoint.auth.roles.join(", ")}` : ""}]` : ""}`
+      `✅ Registered route: ${method.toUpperCase()} ${path} -> ${handlerLabel}${authStatus}${description ? ` (${description})` : ""}${params ? ` [validates path params]` : ""}${query ? ` [validates query params]` : ""}${body?.type ? ` [validates body: ${body.type}]` : ""}${response?.type ? ` [validates response: ${response.type}]` : ""}`
     );
   }
 }
@@ -568,6 +754,9 @@ export async function startYamaNodeRuntime(
   
   // Store loaded plugins
   const loadedPlugins = new Map<string, YamaPlugin>();
+  
+  // Rate limiter (initialized later if config has rateLimit)
+  let globalRateLimiter: RateLimiter | null = null;
 
   // Load and parse YAML config if provided
   let config: YamaConfig | null = null;
@@ -648,11 +837,15 @@ export async function startYamaNodeRuntime(
                   // PGlite can work without URL - defaults to in-memory
                   dbAdapter = createDatabaseAdapter(dialect, dbConfig);
                   await dbAdapter.init(dbConfig);
+                  // Register global database adapter for auth providers
+                  registerGlobalDatabaseAdapter(dbAdapter);
                   console.log("✅ Database connection initialized (pglite - in-memory)");
                 } else if (dbConfig.url && !dbConfig.url.includes("user:password")) {
                   // PostgreSQL requires URL
                   dbAdapter = createDatabaseAdapter(dialect, dbConfig);
                   await dbAdapter.init(dbConfig);
+                  // Register global database adapter for auth providers
+                  registerGlobalDatabaseAdapter(dbAdapter);
                   console.log("✅ Database connection initialized (postgresql)");
                 } else {
                   console.log("⚠️  Database URL not configured - running without database");
@@ -735,6 +928,32 @@ export async function startYamaNodeRuntime(
       handlersDir = join(configDir, "src", "handlers");
     } catch (error) {
       console.error("❌ Failed to load YAML config:", error);
+    }
+  }
+
+  // Load entity repositories for handler context
+  let repositories: Record<string, unknown> = {};
+  if (config?.entities && configDir) {
+    try {
+      repositories = await loadRepositories(configDir, config.entities);
+      if (Object.keys(repositories).length > 0) {
+        console.log(`✅ Loaded ${Object.keys(repositories).length} repository/repositories for handler context`);
+      }
+    } catch (error) {
+      console.warn(
+        "⚠️  Failed to load repositories (handlers can still use manual imports):",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
+  // Initialize rate limiter if global config is provided
+  if (config?.rateLimit) {
+    try {
+      globalRateLimiter = await createRateLimiterFromConfig(config.rateLimit);
+      console.log("✅ Initialized rate limiter");
+    } catch (error) {
+      console.warn(`⚠️  Failed to initialize rate limiter: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -826,10 +1045,55 @@ export async function startYamaNodeRuntime(
     reply.type("text/html").send(html);
   });
 
+  // Register OAuth endpoints if auto-generation is enabled
+  if (config?.auth?.providers) {
+    const oauthProviders = getAllOAuthProviders();
+    for (const provider of config.auth.providers) {
+      // Check if this is an OAuth provider
+      if (provider.type.startsWith("oauth-")) {
+        const oauthMetadata = oauthProviders.get(provider.type.toLowerCase());
+        const autoGenerate = provider.autoGenerateEndpoints !== false; // Default to true
+        
+        if (oauthMetadata && autoGenerate) {
+          const providerName = provider.type.replace("oauth-", "");
+          
+          // Register OAuth initiation endpoint
+          serverAdapter.registerRoute(
+            server,
+            "GET",
+            `/auth/${providerName}`,
+            async (request: HttpRequest, reply: HttpResponse) => {
+              if (oauthMetadata.handleOAuthFlow) {
+                return await oauthMetadata.handleOAuthFlow(request, reply);
+              }
+              reply.status(501).send({ error: "OAuth flow not implemented" });
+            }
+          );
+          
+          // Register OAuth callback endpoint
+          const callbackPath = oauthMetadata.callbackPath || `/auth/${providerName}/callback`;
+          serverAdapter.registerRoute(
+            server,
+            "GET",
+            callbackPath,
+            async (request: HttpRequest, reply: HttpResponse) => {
+              if (oauthMetadata.handleOAuthFlow) {
+                return await oauthMetadata.handleOAuthFlow(request, reply);
+              }
+              reply.status(501).send({ error: "OAuth callback not implemented" });
+            }
+          );
+          
+          console.log(`✅ Auto-generated OAuth endpoints for ${provider.type}`);
+        }
+      }
+    }
+  }
+
   // Load handlers and register routes
   if (config?.endpoints && handlersDir && serverAdapter && configDir) {
     const handlers = await loadHandlers(handlersDir, configDir);
-    registerRoutes(serverAdapter, server, config, handlers, validator);
+    registerRoutes(serverAdapter, server, config, handlers, validator, globalRateLimiter, repositories, dbAdapter || null);
   }
 
   // Call onStart lifecycle hooks for all plugins

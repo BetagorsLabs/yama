@@ -81,6 +81,7 @@ function generateArraySchemaName(entityName: string): string {
 
 /**
  * Check if a method should be generated based on CRUD config
+ * Supports both individual methods and method groups (read, write, mutate, etc.)
  */
 function shouldGenerateMethod(
   method: string,
@@ -103,14 +104,46 @@ function shouldGenerateMethod(
   }
 
   if (typeof crudConfig.enabled === "object") {
-    return method in crudConfig.enabled;
+    // Check for exact method match
+    if (method in crudConfig.enabled) {
+      return true;
+    }
+
+    // Check for method group matches (e.g., "write" applies to POST, PUT, PATCH, DELETE)
+    for (const key of Object.keys(crudConfig.enabled)) {
+      if (methodBelongsToGroup(method, key)) {
+        return true;
+      }
+    }
   }
 
   return true; // Default to enabled
 }
 
 /**
+ * Method groups for convenient auth configuration
+ * Maps group names to their corresponding HTTP methods
+ */
+const METHOD_GROUPS: Record<string, string[]> = {
+  read: ["GET"],
+  write: ["POST", "PUT", "PATCH", "DELETE"],
+  mutate: ["POST", "PUT", "PATCH", "DELETE"], // Alias for write
+  create: ["POST"],
+  update: ["PUT", "PATCH"],
+  delete: ["DELETE"],
+};
+
+/**
+ * Check if a method belongs to a group
+ */
+function methodBelongsToGroup(method: string, group: string): boolean {
+  const methods = METHOD_GROUPS[group.toLowerCase()];
+  return methods ? methods.includes(method) : false;
+}
+
+/**
  * Get method-specific config from CRUD config
+ * Supports both individual methods and method groups (read, write, mutate, etc.)
  */
 function getMethodConfig(
   method: string,
@@ -121,7 +154,17 @@ function getMethodConfig(
   }
 
   if (typeof crudConfig.enabled === "object" && !Array.isArray(crudConfig.enabled)) {
-    return crudConfig.enabled[method];
+    // First, check for exact method match
+    if (method in crudConfig.enabled) {
+      return crudConfig.enabled[method];
+    }
+
+    // Then, check for method group matches (e.g., "write" applies to POST, PUT, PATCH, DELETE)
+    for (const [key, config] of Object.entries(crudConfig.enabled)) {
+      if (methodBelongsToGroup(method, key)) {
+        return config;
+      }
+    }
   }
 
   return undefined;
