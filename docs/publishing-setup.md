@@ -16,17 +16,41 @@ This guide walks you through setting up npm publishing for `@betagors/yama-*` pa
 
 **Important:** The organization name must match your scope (`@betagors`). If you already have a user account, you can create an organization from your account settings.
 
-## Step 2: Create Automation Token
+## Step 2: Create Access Token
+
+You have two options for creating tokens. Both work for CI/CD:
+
+### Option A: Granular Access Token (Recommended - Newer)
+
+1. Navigate to the token page:
+   - **Direct link:** https://www.npmjs.com/settings/betagors/tokens
+   - **Or via UI:** Log in → Click your profile icon → **Access Tokens** → Select organization `betagors` → **Generate New Token**
+   - (Replace `betagors` with your org name if different)
+2. Click **"Generate New Token"**
+3. Select **"Granular Access Token"**
+4. Configure the token:
+   - **Name:** e.g., "GitHub Actions publishing"
+   - **Expiration:** Choose "Never expires" or set a custom expiration
+   - **Permissions:** 
+     - Select **"Read and write"** for the `@betagors` scope
+     - Or select **"Publish packages"** permission
+   - **Packages:** Select `@betagors/*` or all packages
+5. Click **"Generate Token"**
+6. **Copy the token immediately** - you won't be able to see it again!
+
+### Option B: Classic Automation Token (Legacy)
 
 1. Go to https://www.npmjs.com/settings/betagors/tokens
    - (Replace `betagors` with your org name if different)
 2. Click **"Generate New Token"**
-3. Configure the token:
-   - **Type:** Select **"Automation"** (required for CI/CD)
+3. Select **"Automation"** token type
+4. Configure the token:
    - **Expiration:** Choose "Never expires" or set a custom expiration
    - **Description:** e.g., "GitHub Actions publishing"
-4. Click **"Generate Token"**
-5. **Copy the token immediately** - you won't be able to see it again!
+5. Click **"Generate Token"**
+6. **Copy the token immediately** - you won't be able to see it again!
+
+**Note:** Granular Access Tokens provide more fine-grained control and are the recommended approach. Classic Automation tokens still work but may be deprecated in the future.
 
 ## Step 3: Add Token to GitHub Secrets
 
@@ -106,7 +130,10 @@ This error typically means the npm organization doesn't exist or the token doesn
 
 - **Create the organization first:** Go to https://www.npmjs.com/org/create and create an organization named `betagors`
 - **Verify organization exists:** Visit https://www.npmjs.com/org/betagors to confirm it exists
-- **Check token permissions:** Ensure the automation token was created from the organization's token page (https://www.npmjs.com/settings/betagors/tokens), not your personal account
+- **Check token permissions:** 
+  - For **Granular Access Tokens:** Must have "Read and write" or "Publish packages" permission for `@betagors` scope
+  - For **Classic Automation Tokens:** Must be "Automation" type
+  - Ensure the token was created from the organization's token page (https://www.npmjs.com/settings/betagors/tokens), not your personal account
 - **Verify token scope:** The token must have publish permissions for the `@betagors` scope
 - **Ensure publishConfig is set:** All packages must have `"publishConfig": { "access": "public" }` in their `package.json`
 
@@ -123,9 +150,12 @@ This error typically means the npm organization doesn't exist or the token doesn
 
 ### "Invalid token"
 
-- Verify the token is an "Automation" token (not "Read-only" or "Publish")
+- Verify the token type:
+  - **Granular Access Token:** Must have "Read and write" or "Publish packages" permission for `@betagors` scope
+  - **Classic Automation Token:** Should be "Automation" type (not "Read-only" or "Publish")
 - Check that the token hasn't expired
 - Ensure the token is correctly set in GitHub Secrets as `NPM_TOKEN`
+- Verify the token was created from the organization's token page, not your personal account
 
 ## Next Steps
 

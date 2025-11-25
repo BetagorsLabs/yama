@@ -23,7 +23,8 @@
     "build:docs": "turbo run build --filter=@betagors/yama-docs",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:publish": "changeset publish"
+    "changeset:publish": "changeset publish",
+    "check:publishing": "node scripts/check-publishing-setup.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",

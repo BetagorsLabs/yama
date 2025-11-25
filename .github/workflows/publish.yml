@@ -36,6 +36,10 @@ jobs:
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
+          scope: '@betagors'
+          always-auth: true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -48,15 +52,20 @@ jobs:
       - name: Build packages
         run: pnpm build:packages
 
-      - name: Configure npm for scoped packages
+      - name: Verify npm authentication
         run: |
-          echo "@betagors:registry=https://registry.npmjs.org/" >> ~/.npmrc
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc
+          echo "Verifying npm authentication..."
+          npm whoami --registry=https://registry.npmjs.org/ || echo "⚠️ npm whoami failed - check token"
+          echo "Checking organization access..."
+          npm access ls-packages @betagors || echo "⚠️ Cannot access @betagors organization - verify org exists and token has permissions"
 
       # Note: If NPM_TOKEN is not set, this will only create version PRs, not publish
       # To enable publishing:
       # 1. Create npm org: https://www.npmjs.com/org/create (name: betagors)
-      # 2. Create automation token: https://www.npmjs.com/settings/betagors/tokens
+      # 2. Create Granular Access Token from org page: https://www.npmjs.com/settings/betagors/tokens
+      #    - Must be created from organization page, NOT personal account
+      #    - Must have "Read and write" or "Publish packages" permission for @betagors scope
+      #    - Enable "Bypass 2FA" if org requires 2FA
       # 3. Add token to GitHub Secrets as NPM_TOKEN
       - name: Create Release Pull Request or Publish
         id: changesets
@@ -66,6 +75,7 @@ jobs:
           version: pnpm changeset version
           commit: 'chore: version packages'
           title: 'chore: version packages'
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
