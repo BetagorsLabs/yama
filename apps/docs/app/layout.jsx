@@ -3,6 +3,7 @@ import { Banner, Head } from 'nextra/components';
 import { getPageMap } from 'nextra/page-map';
 import 'nextra-theme-docs/style.css';
 import './styles/docs.css';
+import { Logo } from './components/Logo';
 
 export const metadata = {
   title: 'Yama JS Documentation',
@@ -11,7 +12,7 @@ export const metadata = {
 
 const navbar = (
   <Navbar
-    logo={<b>Yama JS</b>}
+    logo={<Logo />}
   />
 );
 const banner = (
@@ -36,7 +37,7 @@ export default async function RootLayout({ children }) {
           navbar={navbar}
           banner={banner}
           pageMap={await getPageMap()}
-          docsRepositoryBase="https://github.com/betagors/yama/tree/main/apps/docs"
+          docsRepositoryBase="https://github.com/BetagorsLabs/yama/tree/main/apps/docs"
           footer={footer}
         >
           {children}

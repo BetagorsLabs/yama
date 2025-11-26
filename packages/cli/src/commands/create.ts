@@ -774,7 +774,7 @@ The server will start on [http://localhost:4000](http://localhost:4000).
 
 ## Learn More
 
-- [Yama Documentation](https://github.com/betagors/yama)
+- [Yama Documentation](https://yamajs.org)
 - Edit \`yama.yaml\` to define your API schemas and endpoints
 - Add handlers in \`src/handlers/\` to implement your business logic
 `;

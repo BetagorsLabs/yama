@@ -1,27 +1,47 @@
-# Yama JS
+<div align="center">
+  <img src="logo.svg" alt="Yama JS" width="120" />
+  
+  # Yama JS
+  
+  **The Backend Framework for Modern APIs**
+  
+  Configuration-first platform that turns YAML into fully functional APIs, SDKs, and documentation.
+  
+  [![License: MPL-2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+  [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
+  [![npm version](https://img.shields.io/npm/v/@betagors/yama-cli)](https://www.npmjs.com/package/@betagors/yama-cli)
+  
+  [Documentation](https://yamajs.org) • [Examples](./examples) • [GitHub](https://github.com/BetagorsLabs/yama) • [Discussions](https://github.com/BetagorsLabs/yama/discussions)
+</div>
 
-> **Configuration-first backend platform** that turns YAML into fully functional APIs, SDKs, and documentation.
+---
 
-[![License: MPL-2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
+## 🎯 What is Yama?
 
-Yama separates **structure** from **logic**:
+Yama is a **configuration-first backend platform** that dramatically reduces boilerplate by separating structure from logic:
+
 - **Structure** lives in YAML (schemas, endpoints, auth rules, behaviors)
 - **Logic** lives in TypeScript handlers
 - **Platform** handles everything else (routing, validation, generation, docs, consistency)
 
-This approach dramatically reduces boilerplate, prevents AI hallucinations, and enables teams to build apps faster and safer.
+This approach enables teams to build APIs faster, safer, and with less code.
 
 ## ✨ Features
 
-- 🎯 **YAML-First Configuration** - Define your entire API structure in `yama.yaml`
-- 🚀 **Type-Safe TypeScript** - Auto-generated types and SDKs from your config
-- 🔌 **Plugin System** - Extensible architecture with database and HTTP adapters
-- 📚 **Auto-Generated Docs** - OpenAPI documentation generated from your config
-- 🛠️ **Powerful CLI** - Development server, code generation, and migration tools
-- 🔒 **Built-in Auth** - JWT authentication and authorization rules
-- 🗄️ **Database Support** - PostgreSQL and PGLite adapters with migrations
-- ⚡ **Fast Development** - Hot reload, watch mode, and instant feedback
+<div align="center">
+
+| Feature | Description |
+|---------|-------------|
+| 🎯 **YAML-First** | Define your entire API structure in `yama.yaml` |
+| 🚀 **Type-Safe** | Auto-generated TypeScript types and SDKs |
+| 🔌 **Plugin System** | Extensible architecture with database and HTTP adapters |
+| 📚 **Auto-Generated Docs** | OpenAPI documentation from your config |
+| 🛠️ **Powerful CLI** | Development server, code generation, and migrations |
+| 🔒 **Built-in Auth** | JWT authentication and authorization rules |
+| 🗄️ **Database Support** | PostgreSQL and PGLite adapters with migrations |
+| ⚡ **Fast Development** | Hot reload, watch mode, and instant feedback |
+
+</div>
 
 ## 🚀 Quick Start
 
@@ -31,25 +51,22 @@ This approach dramatically reduces boilerplate, prevents AI hallucinations, and 
 npm install -g @betagors/yama-cli
 ```
 
-### Create a New Project
+### Create Your First API
 
 ```bash
 yama create my-api
 cd my-api
 npm install
-```
-
-### Start Development Server
-
-```bash
 yama dev
 ```
 
 Your API will be running at `http://localhost:4000` 🎉
 
-## 📖 Basic Usage
+## 📖 Example
 
-### 1. Define Your API in `yama.yaml`
+### 1. Define Your API Structure
+
+Create `yama.yaml`:
 
 ```yaml
 name: my-api
@@ -68,34 +85,39 @@ schemas:
         type: boolean
         default: false
 
-endpoints:
-  /todos:
-    get:
-      handler: handlers/listTodos
-      response:
-        type: array
-        items:
-          $ref: "#/schemas/Todo"
-    post:
-      handler: handlers/createTodo
-      request:
-        $ref: "#/schemas/Todo"
-      response:
-        $ref: "#/schemas/Todo"
+entities:
+  Todo:
+    table: todos
+    crud:
+      enabled: true
+    fields:
+      id:
+        type: uuid
+        primary: true
+        generated: true
+      title:
+        type: string
+        required: true
+      completed:
+        type: boolean
+        default: false
 ```
 
-### 2. Write Your Handlers
+### 2. Write Your Business Logic (Optional)
+
+For custom endpoints, create handlers:
 
 ```typescript
 // src/handlers/listTodos.ts
 import { HandlerContext } from '@betagors/yama-core';
 
 export async function listTodos(context: HandlerContext) {
-  // Your business logic here
-  return [
-    { id: '1', title: 'Learn Yama', completed: false },
-    { id: '2', title: 'Build an API', completed: true },
-  ];
+  const { search, limit = 10 } = context.query;
+  
+  return await context.entities.Todo.findAll({
+    where: search ? { title: { ilike: `%${search}%` } } : {},
+    limit: Number(limit)
+  });
 }
 ```
 
@@ -114,12 +136,15 @@ This creates:
 ```typescript
 import { api } from './generated/sdk';
 
-const todos = await api.todos.get();
+// Type-safe API calls
+const todos = await api.todos.get({ search: 'learn' });
 const newTodo = await api.todos.post({ 
   title: 'New Todo',
   completed: false 
 });
 ```
+
+That's it! Yama handles routing, validation, type generation, and documentation automatically.
 
 ## 📁 Project Structure
 
@@ -151,7 +176,7 @@ yama dev --no-watch       # Disable watch mode
 
 ```bash
 yama generate             # Generate types and SDK
-yama generate --watch    # Watch mode
+yama generate --watch     # Watch mode
 yama types               # Generate types only
 yama sdk                 # Generate SDK only
 ```
@@ -194,10 +219,27 @@ yama/
 
 ## 📚 Documentation
 
-- [Quick Start Guide](QUICK_START.md) - Get up and running quickly
-- [Contributing Guide](CONTRIBUTING.md) - How to contribute to Yama
-- [CLI Usage](CLI_USAGE.md) - Detailed CLI documentation
-- [Development Scripts](docs/development-scripts.md) - Development workflow
+- 📖 **[Full Documentation](https://yamajs.org)** - Complete guides and API reference
+- 🚀 **[Getting Started](https://yamajs.org/docs/getting-started)** - Installation and setup
+- 🎓 **[Core Concepts](https://yamajs.org/docs/core-concepts)** - Schemas, entities, endpoints, handlers
+- 📝 **[Examples](https://yamajs.org/docs/examples)** - Real-world examples and tutorials
+- 🔌 **[Plugins](https://yamajs.org/plugins)** - Extend Yama with plugins
+
+## 💡 Why Yama?
+
+- **Less Boilerplate** - Define structure once, generate everything
+- **Type Safety** - End-to-end type safety from config to client
+- **AI-Friendly** - Structured config reduces AI hallucinations
+- **Developer Experience** - Fast iteration, hot reload, instant feedback
+- **Open Source** - Transparent, extensible, community-driven
+
+## 🎯 Philosophy
+
+Yama's core philosophy:
+
+- **YAML defines the contract** - Structure is explicit and version-controlled
+- **Code defines custom behavior** - Business logic stays in TypeScript
+- **Yama guarantees correctness** - Type safety, validation, and consistency
 
 ## 🤝 Contributing
 
@@ -221,17 +263,9 @@ This project is licensed under the **Mozilla Public License 2.0 (MPL-2.0)** - se
 
 The documentation site (`apps/docs`) is licensed under **MIT** - see [apps/docs/LICENSE](apps/docs/LICENSE) for details.
 
-## 🎯 Philosophy
-
-Yama's core philosophy:
-
-- **YAML defines the contract** - Structure is explicit and version-controlled
-- **Code defines custom behavior** - Business logic stays in TypeScript
-- **Yama guarantees correctness** - Type safety, validation, and consistency
-
 ## 🗺️ Roadmap
 
-### Phase 1: Core Platform (Current)
+### Phase 1: Core Platform ✅
 - ✅ YAML-based configuration
 - ✅ TypeScript handler system
 - ✅ Database adapters (PostgreSQL, PGLite)
@@ -239,31 +273,27 @@ Yama's core philosophy:
 - ✅ Schema validation and code generation
 - ✅ CLI tooling
 
-### Phase 2: Enhanced Features
+### Phase 2: Enhanced Features 🔄
 - 🔄 Serverless deployment support
 - 📊 Advanced analytics and monitoring
 - 🔐 Enhanced authentication providers
 - 🚀 Automated scaling and optimization
 
-### Phase 3: Full-Stack Expansion
+### Phase 3: Full-Stack Expansion 📋
 - 🎨 Frontend-as-config ("vibe config")
 - 🤖 AI-assisted generation
 - ⚡ Real-time features and subscriptions
 
-## 💡 Why Yama?
-
-- **Less Boilerplate** - Define structure once, generate everything
-- **Type Safety** - End-to-end type safety from config to client
-- **AI-Friendly** - Structured config reduces AI hallucinations
-- **Developer Experience** - Fast iteration, hot reload, instant feedback
-- **Open Source** - Transparent, extensible, community-driven
+See the [full roadmap](./docs/ROADMAP.md) for detailed plans.
 
 ## 📞 Support
 
 - 📖 [Documentation](https://yamajs.org)
-- 💬 [GitHub Discussions](https://github.com/betagors/yama/discussions)
-- 🐛 [Issue Tracker](https://github.com/betagors/yama/issues)
+- 💬 [GitHub Discussions](https://github.com/BetagorsLabs/yama/discussions)
+- 🐛 [Issue Tracker](https://github.com/BetagorsLabs/yama/issues)
 
 ---
 
-Made with ❤️ by [Betagors Labs](https://github.com/BetagorsLabs)
+<div align="center">
+  Made with ❤️ by <a href="https://github.com/BetagorsLabs">Betagors Labs</a>
+</div>
