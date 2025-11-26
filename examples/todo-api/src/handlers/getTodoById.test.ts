@@ -1,31 +1,26 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { getTodoById } from "./getTodoById.ts";
-import type { HttpRequest, HttpResponse } from "@betagors/yama-core";
-import { todoRepository } from "../generated/db/repository.ts";
-
-// Mock the repository
-vi.mock("../generated/db/repository.ts", () => ({
-  todoRepository: {
-    findById: vi.fn(),
-  },
-}));
+import type { HandlerContext } from "@betagors/yama-core";
 
 describe("getTodoById Handler", () => {
-  let mockRequest: Partial<HttpRequest>;
-  let mockReply: Partial<HttpResponse>;
+  let mockContext: Partial<HandlerContext>;
+  let mockTodoRepository: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockRequest = {
+    mockTodoRepository = {
+      findById: vi.fn(),
+    };
+
+    mockContext = {
       params: {
         id: "123",
       },
-    };
-
-    mockReply = {
       status: vi.fn().mockReturnThis(),
-      send: vi.fn(),
+      entities: {
+        Todo: mockTodoRepository,
+      },
     };
   });
 
@@ -37,33 +32,30 @@ describe("getTodoById Handler", () => {
       createdAt: new Date().toISOString(),
     };
 
-    vi.mocked(todoRepository.findById).mockResolvedValue(mockTodo);
+    mockTodoRepository.findById.mockResolvedValue(mockTodo);
 
     const result = await getTodoById(
-      mockRequest as HttpRequest,
-      mockReply as HttpResponse
+      mockContext as HandlerContext
     );
 
-    expect(todoRepository.findById).toHaveBeenCalledWith("123");
+    expect(mockTodoRepository.findById).toHaveBeenCalledWith("123");
     expect(result).toEqual(mockTodo);
-    expect(mockReply.status).not.toHaveBeenCalled();
+    expect(mockContext.status).not.toHaveBeenCalled();
   });
 
   it("should return 404 when todo not found", async () => {
-    vi.mocked(todoRepository.findById).mockResolvedValue(null);
+    mockTodoRepository.findById.mockResolvedValue(null);
 
     const result = await getTodoById(
-      mockRequest as HttpRequest,
-      mockReply as HttpResponse
+      mockContext as HandlerContext
     );
 
-    expect(db.getTodoById).toHaveBeenCalledWith("123");
-    expect(result).toBeUndefined();
-    expect(mockReply.status).toHaveBeenCalledWith(404);
-    expect(mockReply.send).toHaveBeenCalledWith({
+    expect(mockTodoRepository.findById).toHaveBeenCalledWith("123");
+    expect(result).toEqual({
       error: "Not found",
       message: 'Todo with id "123" not found',
     });
+    expect(mockContext.status).toHaveBeenCalledWith(404);
   });
 
   it("should handle different todo IDs", async () => {
@@ -74,26 +66,24 @@ describe("getTodoById Handler", () => {
       createdAt: new Date().toISOString(),
     };
 
-    mockRequest.params = { id: "456" };
-    vi.mocked(db.getTodoById).mockResolvedValue(mockTodo);
+    mockContext.params = { id: "456" };
+    mockTodoRepository.findById.mockResolvedValue(mockTodo);
 
     const result = await getTodoById(
-      mockRequest as HttpRequest,
-      mockReply as HttpResponse
+      mockContext as HandlerContext
     );
 
-    expect(db.getTodoById).toHaveBeenCalledWith("456");
+    expect(mockTodoRepository.findById).toHaveBeenCalledWith("456");
     expect(result).toEqual(mockTodo);
   });
 
   it("should propagate database errors", async () => {
     const error = new Error("Database query failed");
-    vi.mocked(todoRepository.findById).mockRejectedValue(error);
+    mockTodoRepository.findById.mockRejectedValue(error);
 
     await expect(
       getTodoById(
-        mockRequest as HttpRequest,
-        mockReply as HttpResponse
+        mockContext as HandlerContext
       )
     ).rejects.toThrow("Database query failed");
   });

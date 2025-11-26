@@ -22,6 +22,14 @@ import { schemaRestoreCommand } from "./commands/schema-restore.ts";
 import { pluginListCommand, pluginInstallCommand, pluginValidateCommand } from "./commands/plugin.ts";
 import { dbListCommand } from "./commands/db-list.ts";
 import { dbInspectCommand } from "./commands/db-inspect.ts";
+import { addCommand } from "./commands/add.ts";
+import { addEndpointCommand } from "./commands/add-endpoint.ts";
+import { addSchemaCommand } from "./commands/add-schema.ts";
+import { addEntityCommand } from "./commands/add-entity.ts";
+import { addHandlerCommand } from "./commands/add-handler.ts";
+import { addPluginCommand } from "./commands/add-plugin.ts";
+import { removePluginCommand } from "./commands/remove-plugin.ts";
+import { syncPluginsCommand } from "./commands/sync-plugins.ts";
 
 const program = new Command();
 
@@ -111,6 +119,84 @@ program
   .description("List all schemas")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .action(schemasCommand);
+
+// Add commands
+program
+  .command("add")
+  .description("Add endpoint, schema, or entity to yama.yaml")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("-t, --type <type>", "Type to add (endpoint, schema, entity)")
+  .action(addCommand);
+
+program
+  .command("add:endpoint")
+  .alias("add-endpoint")
+  .description("Add a new endpoint")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .action(async (options) => {
+    await addEndpointCommand(options);
+  });
+
+program
+  .command("add:schema")
+  .alias("add-schema")
+  .description("Add a new schema")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .action(async (options) => {
+    await addSchemaCommand(options);
+  });
+
+program
+  .command("add:entity")
+  .alias("add-entity")
+  .description("Add a new entity")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .action(async (options) => {
+    await addEntityCommand(options);
+  });
+
+program
+  .command("add:handler")
+  .alias("add-handler")
+  .description("Add a new handler")
+  .requiredOption("-n, --name <name>", "Handler name (required)")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("-f, --force", "Override existing handler file")
+  .action(async (options) => {
+    await addHandlerCommand(options);
+  });
+
+program
+  .command("add:plugin")
+  .alias("add-plugin")
+  .description("Add a plugin to yama.yaml and install it")
+  .requiredOption("-n, --name <name>", "Plugin package name (required)")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("--config-only", "Only add to yama.yaml, don't install package")
+  .action(async (options) => {
+    await addPluginCommand(options);
+  });
+
+program
+  .command("remove:plugin")
+  .alias("remove-plugin")
+  .description("Remove a plugin from yama.yaml and uninstall it")
+  .requiredOption("-n, --name <name>", "Plugin package name (required)")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("--keep-package", "Keep the npm package, only remove from yama.yaml")
+  .action(async (options) => {
+    await removePluginCommand(options);
+  });
+
+program
+  .command("sync:plugins")
+  .alias("sync-plugins")
+  .description("Sync plugins: install plugins from yama.yaml that aren't installed")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("--remove", "Also remove plugins from package.json that aren't in yama.yaml")
+  .action(async (options) => {
+    await syncPluginsCommand(options);
+  });
 
 program
   .command("docs")

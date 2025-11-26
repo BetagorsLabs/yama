@@ -1,4 +1,4 @@
 export default {
-  naming: 'Plugin Naming',
+  official: 'Official Plugins',
 };
 

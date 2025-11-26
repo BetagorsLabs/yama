@@ -35,9 +35,9 @@
   },
   "dependencies": {
     "@betagors/yama-core": "workspace:*",
-    "@betagors/yama-docs-generator": "workspace:*",
+    "@betagors/yama-openapi": "workspace:*",
     "@betagors/yama-postgres": "workspace:*",
-    "@betagors/yama-http-fastify": "workspace:*",
+    "@betagors/yama-fastify": "workspace:*",
     "js-yaml": "^4.1.1",
     "dotenv": "^16.4.5"
   },

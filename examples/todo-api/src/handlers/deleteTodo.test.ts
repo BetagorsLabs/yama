@@ -1,84 +1,75 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { deleteTodo } from "./deleteTodo.ts";
-import type { HttpRequest, HttpResponse } from "@betagors/yama-core";
-import { todoRepository } from "../generated/db/repository.ts";
-
-// Mock the repository
-vi.mock("../generated/db/repository.ts", () => ({
-  todoRepository: {
-    delete: vi.fn(),
-  },
-}));
+import { deleteTodo } from "./deleteTodo";
+import type { DeleteTodoHandlerContext } from "@yama/gen";
 
 describe("deleteTodo Handler", () => {
-  let mockRequest: Partial<HttpRequest>;
-  let mockReply: Partial<HttpResponse>;
+  let mockContext: Partial<DeleteTodoHandlerContext>;
+  let mockTodoRepository: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockRequest = {
+    mockTodoRepository = {
+      delete: vi.fn(),
+    };
+
+    mockContext = {
       params: {
         id: "123",
       },
-    };
-
-    mockReply = {
       status: vi.fn().mockReturnThis(),
-      send: vi.fn(),
+      entities: {
+        Todo: mockTodoRepository,
+      },
     };
   });
 
   it("should delete a todo successfully and return 204", async () => {
-    vi.mocked(todoRepository.delete).mockResolvedValue(true);
+    mockTodoRepository.delete.mockResolvedValue(true);
 
-    await deleteTodo(
-      mockRequest as HttpRequest,
-      mockReply as HttpResponse
+    const result = await deleteTodo(
+      mockContext as DeleteTodoHandlerContext
     );
 
-    expect(todoRepository.delete).toHaveBeenCalledWith("123");
-    expect(mockReply.status).toHaveBeenCalledWith(204);
-    expect(mockReply.send).toHaveBeenCalled();
+    expect(mockTodoRepository.delete).toHaveBeenCalledWith("123");
+    expect(mockContext.status).toHaveBeenCalledWith(204);
+    expect(result).toBeUndefined();
   });
 
   it("should return 404 when todo not found", async () => {
-    vi.mocked(todoRepository.delete).mockResolvedValue(false);
+    mockTodoRepository.delete.mockResolvedValue(false);
 
-    await deleteTodo(
-      mockRequest as HttpRequest,
-      mockReply as HttpResponse
+    const result = await deleteTodo(
+      mockContext as DeleteTodoHandlerContext
     );
 
-    expect(todoRepository.delete).toHaveBeenCalledWith("123");
-    expect(mockReply.status).toHaveBeenCalledWith(404);
-    expect(mockReply.send).toHaveBeenCalledWith({
+    expect(mockTodoRepository.delete).toHaveBeenCalledWith("123");
+    expect(mockContext.status).toHaveBeenCalledWith(404);
+    expect(result).toEqual({
       error: "Not found",
       message: 'Todo with id "123" not found',
     });
   });
 
   it("should handle different todo IDs", async () => {
-    mockRequest.params = { id: "456" };
-    vi.mocked(db.deleteTodo).mockResolvedValue(true);
+    mockContext.params = { id: "456" };
+    mockTodoRepository.delete.mockResolvedValue(true);
 
     await deleteTodo(
-      mockRequest as HttpRequest,
-      mockReply as HttpResponse
+      mockContext as DeleteTodoHandlerContext
     );
 
-    expect(db.deleteTodo).toHaveBeenCalledWith("456");
-    expect(mockReply.status).toHaveBeenCalledWith(204);
+    expect(mockTodoRepository.delete).toHaveBeenCalledWith("456");
+    expect(mockContext.status).toHaveBeenCalledWith(204);
   });
 
   it("should propagate database errors", async () => {
     const error = new Error("Database delete failed");
-    vi.mocked(todoRepository.delete).mockRejectedValue(error);
+    mockTodoRepository.delete.mockRejectedValue(error);
 
     await expect(
       deleteTodo(
-        mockRequest as HttpRequest,
-        mockReply as HttpResponse
+        mockContext as DeleteTodoHandlerContext
       )
     ).rejects.toThrow("Database delete failed");
   });

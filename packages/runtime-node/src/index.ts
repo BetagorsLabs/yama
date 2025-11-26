@@ -7,8 +7,12 @@ import {
   fieldToJsonSchema,
   type AuthConfig,
   type EndpointAuth,
+  type AuthContext,
   authenticateAndAuthorize,
   type YamaEntities,
+  type EntityField,
+  type EntityDefinition,
+  type CrudConfig,
   type DatabaseConfig,
   type ServerConfig,
   entitiesToSchemas,
@@ -21,11 +25,42 @@ import {
   type HttpRequest,
   type HttpResponse,
   type RouteHandler,
+  type HandlerContext,
+  type HandlerFunction,
+  type StorageBucket,
   loadPlugin,
   type YamaPlugin,
+  generateAllCrudEndpoints,
+  generateCrudInputSchemas,
+  generateArraySchema,
+  registerGlobalDatabaseAdapter,
+  getAllOAuthProviders,
+  type OAuthProviderMetadata,
+  type RateLimitConfig,
+  createRateLimiterFromConfig,
+  type RateLimiter,
+  formatRateLimitHeaders,
+  type PaginationConfig,
+  normalizePaginationConfig,
+  calculatePaginationMetadata,
+  wrapPaginatedResponse,
+  detectPaginationFromQuery,
 } from "@betagors/yama-core";
-import { generateOpenAPI } from "@betagors/yama-docs-generator";
-import { createFastifyAdapter } from "@betagors/yama-http-fastify";
+import { createFastifyAdapter } from "@betagors/yama-fastify";
+
+// Dynamic import for openapi package to handle workspace resolution
+async function getGenerateOpenAPI() {
+  try {
+    // @ts-ignore - dynamic import, package may not be available at compile time
+    const openapiModule = await import("@betagors/yama-openapi");
+    return openapiModule.generateOpenAPI;
+  } catch (error) {
+    throw new Error(
+      `Failed to load @betagors/yama-openapi. Make sure it's built and available. ` +
+      `Original error: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
 import yaml from "js-yaml";
 import { readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname, extname, resolve, relative } from "path";
@@ -40,11 +75,45 @@ interface YamaConfig {
   entities?: YamaEntities;
   server?: ServerConfig;
   auth?: AuthConfig;
+  rateLimit?: RateLimitConfig;
   plugins?: Record<string, Record<string, unknown>> | string[]; // Plugin configs or list of plugin names
+  realtime?: {
+    entities?: Record<string, {
+      enabled?: boolean;
+      events?: ("created" | "updated" | "deleted")[];
+      watchFields?: string[];
+      channelPrefix?: string;
+    }>;
+    channels?: Array<{
+      name: string;
+      path: string;
+      auth?: {
+        required?: boolean;
+        handler?: string;
+      };
+      params?: Record<string, {
+        type: string;
+        required?: boolean;
+      }>;
+    }>;
+  };
   endpoints?: Array<{
     path: string;
     method: string;
-    handler?: string; // Optional - if not provided, uses default handler
+    handler?: string | {
+      type: "query";
+      entity: string;
+      filters?: Array<{
+        field: string;
+        operator: "eq" | "ilike" | "gt" | "gte" | "lt" | "lte";
+        param: string; // References query param or path param (e.g., "query.search" or "params.id")
+      }>;
+      pagination?: PaginationConfig;
+      orderBy?: {
+        field: string;
+        direction?: "asc" | "desc";
+      } | string; // Can be "query.orderBy" to read from query params
+    }; // Optional - if not provided, uses default handler
     description?: string;
     params?: Record<string, SchemaField>;
     body?: {
@@ -55,10 +124,11 @@ interface YamaConfig {
       type: string;
     };
     auth?: EndpointAuth;
+    rateLimit?: RateLimitConfig;
   }>;
 }
 
-type HandlerFunction = RouteHandler;
+// HandlerFunction is now imported from core, which uses HandlerContext
 
 /**
  * Resolve @betagors/yama-* and @gen/* imports using package.json exports
@@ -204,6 +274,61 @@ async function loadHandlers(handlersDir: string, projectRoot?: string): Promise<
 }
 
 /**
+ * Load entity repositories from generated database code
+ * Maps entity names to repository instances (e.g., "Product" → productRepository)
+ */
+async function loadRepositories(
+  configDir: string,
+  entities?: YamaEntities
+): Promise<Record<string, unknown>> {
+  const repositories: Record<string, unknown> = {};
+
+  // If no entities defined, return empty object
+  if (!entities || Object.keys(entities).length === 0) {
+    return repositories;
+  }
+
+  // Construct path to .yama/gen/db/index.ts
+  const dbIndexPath = join(configDir, ".yama", "gen", "db", "index.ts");
+
+  // Check if repository index file exists
+  if (!existsSync(dbIndexPath)) {
+    console.warn(`⚠️  Repository index not found: ${dbIndexPath} (repositories may not be generated yet)`);
+    return repositories;
+  }
+
+  try {
+    // Convert to absolute path and then to file URL for ES module import
+    const absolutePath = resolve(dbIndexPath);
+    const fileUrl = pathToFileURL(absolutePath).href;
+
+    // Dynamic import for ES modules
+    const repositoryModule = await import(fileUrl);
+
+    // Map entity names to repository instances
+    // Entity "Product" → repository export "productRepository"
+    for (const entityName of Object.keys(entities)) {
+      const repositoryName = `${entityName.charAt(0).toLowerCase() + entityName.slice(1)}Repository`;
+      
+      if (repositoryName in repositoryModule) {
+        repositories[entityName] = repositoryModule[repositoryName];
+        console.log(`✅ Loaded repository: ${entityName} → ${repositoryName}`);
+      } else {
+        console.warn(`⚠️  Repository ${repositoryName} not found for entity ${entityName}`);
+      }
+    }
+  } catch (error) {
+    console.warn(
+      `⚠️  Failed to load repositories from ${dbIndexPath}:`,
+      error instanceof Error ? error.message : String(error)
+    );
+    // Return empty object on error - runtime continues without repositories
+  }
+
+  return repositories;
+}
+
+/**
  * Build a JSON schema for query parameter validation
  */
 function buildQuerySchema(
@@ -294,23 +419,713 @@ function coerceParams(
 /**
  * Default handler for endpoints without custom handlers
  */
+/**
+ * Create a handler context from request and reply
+ */
+function createHandlerContext(
+  request: HttpRequest,
+  reply: HttpResponse,
+  authContext?: AuthContext,
+  repositories?: Record<string, unknown>,
+  dbAdapter?: unknown,
+  cacheAdapter?: unknown,
+  storage?: Record<string, StorageBucket>,
+  realtimeAdapter?: unknown
+): HandlerContext {
+  let statusCode: number | undefined;
+  
+  const context: HandlerContext = {
+    // Request data
+    method: request.method,
+    url: request.url,
+    path: request.path,
+    query: request.query,
+    params: request.params,
+    body: request.body,
+    headers: request.headers,
+    
+    // Auth context
+    auth: authContext,
+    
+    // Database access
+    db: dbAdapter,
+    entities: repositories,
+    
+    // Cache access
+    cache: cacheAdapter as any,
+    
+    // Storage access
+    storage: storage,
+    
+    // Realtime access
+    realtime: realtimeAdapter ? {
+      publish: async (channel: string, event: string, data: unknown, options?: { userId?: string; excludeUserId?: string }) => {
+        const adapter = realtimeAdapter as any;
+        if (adapter && typeof adapter.publish === "function") {
+          return await adapter.publish(channel, event, data, options);
+        }
+        throw new Error("Realtime adapter not available");
+      },
+      publishAsync: (channel: string, event: string, data: unknown, options?: { userId?: string; excludeUserId?: string }) => {
+        const adapter = realtimeAdapter as any;
+        if (adapter && typeof adapter.publishAsync === "function") {
+          adapter.publishAsync(channel, event, data, options);
+        }
+      },
+      broadcast: async (channel: string, event: string, data: unknown, options?: { userId?: string; excludeUserId?: string }) => {
+        const adapter = realtimeAdapter as any;
+        if (adapter && typeof adapter.broadcast === "function") {
+          return await adapter.broadcast(channel, event, data, options);
+        }
+        throw new Error("Realtime adapter not available");
+      },
+      getClients: async (channel: string) => {
+        const adapter = realtimeAdapter as any;
+        if (adapter && typeof adapter.getClients === "function") {
+          return await adapter.getClients(channel);
+        }
+        return [];
+      },
+      get available() {
+        return realtimeAdapter !== null && realtimeAdapter !== undefined;
+      },
+    } : undefined,
+    
+    // Status helper
+    status(code: number): HandlerContext {
+      statusCode = code;
+      context._statusCode = code;
+      return context;
+    },
+    
+    // Original request/reply
+    _original: {
+      request,
+      reply,
+    },
+    
+    _statusCode: statusCode,
+  };
+  
+  return context;
+}
+
+/**
+ * Extract entity name from response type
+ * Handles patterns like "ProductArray" -> "Product" or "Product" -> "Product"
+ */
+function extractEntityNameFromResponseType(
+  responseType: string,
+  entities: YamaEntities
+): string | null {
+  // Try direct match first (e.g., "Product")
+  if (entities[responseType]) {
+    return responseType;
+  }
+
+  // Try removing "Array" suffix (e.g., "ProductArray" -> "Product")
+  if (responseType.endsWith("Array")) {
+    const entityName = responseType.slice(0, -5); // Remove "Array"
+    if (entities[entityName]) {
+      return entityName;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Get API field name from entity field definition
+ */
+function getApiFieldNameFromEntity(fieldName: string, field: EntityField): string {
+  // Use explicit api name if provided
+  if (field.api && typeof field.api === "string") {
+    return field.api;
+  }
+
+  // Convert dbColumn to camelCase if provided
+  if (field.dbColumn) {
+    return field.dbColumn.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  }
+
+  // Use field name as-is
+  return fieldName;
+}
+
+/**
+ * Get primary key field name from entity definition
+ */
+function getPrimaryKeyFieldName(entityDef: EntityDefinition): string {
+  for (const [fieldName, field] of Object.entries(entityDef.fields)) {
+    if (field.primary) {
+      return getApiFieldNameFromEntity(fieldName, field);
+    }
+  }
+  return "id"; // Default fallback
+}
+
+/**
+ * Map query parameters to repository findAll options
+ */
+function mapQueryToFindAllOptions(
+  query: Record<string, unknown>,
+  entityDef: EntityDefinition,
+  entityConfig?: EntityDefinition
+): {
+  [key: string]: unknown;
+  limit?: number;
+  offset?: number;
+  orderBy?: { field: string; direction?: "asc" | "desc" };
+  search?: string;
+  searchFields?: string[];
+  searchMode?: "contains" | "starts" | "ends" | "exact";
+} {
+  const options: {
+    [key: string]: unknown;
+    limit?: number;
+    offset?: number;
+    orderBy?: { field: string; direction?: "asc" | "desc" };
+  } = {};
+
+  // Extract pagination - support multiple types
+  // Try to detect pagination type from query params
+  const detectedPagination = detectPaginationFromQuery(query);
+  
+  if (detectedPagination) {
+    options.limit = detectedPagination.limit;
+    options.offset = detectedPagination.offset;
+    
+    // For cursor pagination, we'd need repository support
+    // For now, we'll use offset-based approach
+    // The cursor value could be used for filtering if repository supports it
+  } else {
+    // Fallback to legacy limit/offset if no pagination type detected
+    if (query.limit !== undefined) {
+      options.limit = typeof query.limit === "number" ? query.limit : Number(query.limit);
+    }
+    if (query.offset !== undefined) {
+      options.offset = typeof query.offset === "number" ? query.offset : Number(query.offset);
+    }
+  }
+
+  // Extract orderBy
+  if (query.orderBy) {
+    const orderByStr = String(query.orderBy);
+    if (orderByStr.includes(":")) {
+      // Format: orderBy=field:direction
+      const [field, direction] = orderByStr.split(":");
+      options.orderBy = {
+        field: field.trim(),
+        direction: (direction?.trim().toLowerCase() === "desc" ? "desc" : "asc") as "asc" | "desc",
+      };
+    } else {
+      // Format: orderBy=field (use orderDirection if provided)
+      const direction = query.orderDirection 
+        ? (String(query.orderDirection).toLowerCase() === "desc" ? "desc" : "asc") as "asc" | "desc"
+        : undefined;
+      options.orderBy = {
+        field: orderByStr,
+        ...(direction && { direction }),
+      };
+    }
+  }
+
+  // Handle search parameter if present (auto-enabled if entity has searchable fields)
+  if (query.search !== undefined) {
+    // Check if search should be enabled
+    const crudConfig = entityConfig?.crud;
+    let searchEnabled = false;
+    let searchConfig: CrudConfig["search"] | undefined;
+
+    if (crudConfig) {
+      if (typeof crudConfig === "object") {
+        searchConfig = crudConfig.search;
+        // Explicitly disabled
+        if (searchConfig === false) {
+          searchEnabled = false;
+        } else {
+          // Enabled if config exists or entity has searchable fields
+          searchEnabled = true;
+        }
+      } else {
+        // CRUD is boolean - check if entity has searchable fields
+        const hasSearchableFields = Object.values(entityDef.fields).some(
+          field => field.api !== false && (field.type === "string" || field.type === "text")
+        );
+        searchEnabled = hasSearchableFields;
+      }
+    } else {
+      // No CRUD config - check if entity has searchable fields (auto-enable)
+      const hasSearchableFields = Object.values(entityDef.fields).some(
+        field => field.api !== false && (field.type === "string" || field.type === "text")
+      );
+      searchEnabled = hasSearchableFields;
+    }
+
+    if (searchEnabled) {
+      options.search = String(query.search);
+      
+      // Get search mode
+      if (searchConfig && typeof searchConfig === "object" && searchConfig.mode) {
+        options.searchMode = searchConfig.mode;
+      } else {
+        options.searchMode = "contains"; // Default
+      }
+
+      // Determine searchable fields
+      if (searchConfig === true) {
+        // Use all searchable fields
+        const searchable: string[] = [];
+        for (const [fieldName, field] of Object.entries(entityDef.fields)) {
+          if (field.api !== false && (field.type === "string" || field.type === "text")) {
+            const apiFieldName = getApiFieldNameFromEntity(fieldName, field);
+            searchable.push(apiFieldName);
+          }
+        }
+        options.searchFields = searchable;
+      } else if (Array.isArray(searchConfig)) {
+        // Specific fields
+        options.searchFields = searchConfig;
+      } else if (searchConfig && typeof searchConfig === "object" && searchConfig.fields) {
+        if (Array.isArray(searchConfig.fields)) {
+          options.searchFields = searchConfig.fields;
+        } else if (searchConfig.fields === true) {
+          // All searchable fields
+          const searchable: string[] = [];
+          for (const [fieldName, field] of Object.entries(entityDef.fields)) {
+            if (field.api !== false && (field.type === "string" || field.type === "text")) {
+              const apiFieldName = getApiFieldNameFromEntity(fieldName, field);
+              searchable.push(apiFieldName);
+            }
+          }
+          options.searchFields = searchable;
+        }
+      } else {
+        // Default: all string/text fields (auto-detected)
+        const searchable: string[] = [];
+        for (const [fieldName, field] of Object.entries(entityDef.fields)) {
+          if (field.api !== false && (field.type === "string" || field.type === "text")) {
+            const apiFieldName = getApiFieldNameFromEntity(fieldName, field);
+            searchable.push(apiFieldName);
+          }
+        }
+        options.searchFields = searchable;
+      }
+    }
+  }
+
+  // Map query parameters to entity field filters
+  // Match query param names to API field names
+  for (const [queryKey, queryValue] of Object.entries(query)) {
+    // Skip special query params
+    if (["limit", "offset", "page", "pageSize", "cursor", "orderBy", "orderDirection", "search"].includes(queryKey)) {
+      continue;
+    }
+
+    // Find matching entity field by API field name
+    for (const [fieldName, field] of Object.entries(entityDef.fields)) {
+      const apiFieldName = getApiFieldNameFromEntity(fieldName, field);
+      if (apiFieldName === queryKey) {
+        options[apiFieldName] = queryValue;
+        break;
+      }
+    }
+  }
+
+  return options;
+}
+
+/**
+ * Resolve parameter reference (e.g., "query.limit" or "params.id")
+ * Returns the value from context or undefined if not found
+ */
+function resolveParameter(
+  paramRef: string,
+  context: HandlerContext
+): unknown {
+  if (typeof paramRef !== "string") {
+    return paramRef; // Already a direct value
+  }
+
+  const parts = paramRef.split(".");
+  if (parts.length !== 2) {
+    return undefined;
+  }
+
+  const [source, key] = parts;
+  if (source === "query") {
+    return context.query[key];
+  } else if (source === "params") {
+    return context.params[key];
+  }
+
+  return undefined;
+}
+
+/**
+ * Create a query handler from endpoint configuration
+ */
+function createQueryHandler(
+  endpoint: NonNullable<YamaConfig["endpoints"]>[number],
+  config?: YamaConfig,
+  entities?: YamaEntities
+): HandlerFunction {
+  return async (context: HandlerContext) => {
+    // Handler config must be an object with type: "query"
+    if (typeof endpoint.handler !== "object" || endpoint.handler.type !== "query") {
+      throw new Error("Invalid query handler configuration");
+    }
+
+    const handlerConfig = endpoint.handler;
+    const entityName = handlerConfig.entity;
+
+    // Check if entity exists
+    if (!entities || !entities[entityName]) {
+      throw new Error(`Entity "${entityName}" not found in configuration`);
+    }
+
+    // Check if repository is available
+    if (!context.entities || !context.entities[entityName]) {
+      throw new Error(`Repository for entity "${entityName}" not available in handler context`);
+    }
+
+    const repository = context.entities[entityName] as any;
+    const entityDef = entities[entityName];
+
+    // Build findAll options
+    const options: Record<string, unknown> = {};
+
+    // Process filters
+    if (handlerConfig.filters && Array.isArray(handlerConfig.filters)) {
+      const searchFields: string[] = [];
+      let searchValue: string | undefined;
+
+      for (const filter of handlerConfig.filters) {
+        const paramValue = resolveParameter(filter.param, context);
+        
+        // Skip if parameter value is undefined or null
+        if (paramValue === undefined || paramValue === null) {
+          continue;
+        }
+
+        const apiFieldName = getApiFieldNameFromEntity(
+          filter.field,
+          entityDef.fields[filter.field] || {}
+        );
+
+        if (filter.operator === "eq") {
+          // Exact match - use direct field matching
+          options[apiFieldName] = paramValue;
+        } else if (filter.operator === "ilike") {
+          // Case-insensitive contains - use search functionality
+          // Collect search fields and use the first value as search term
+          if (!searchValue) {
+            searchValue = String(paramValue);
+          }
+          searchFields.push(apiFieldName);
+        } else {
+          // For other operators (gt, gte, lt, lte), we'd need repository extension
+          // For MVP, log a warning and skip
+          console.warn(
+            `⚠️  Operator "${filter.operator}" not fully supported for field "${filter.field}" in query handler. Only "eq" and "ilike" are supported.`
+          );
+        }
+      }
+
+      // Apply search if we have search fields
+      if (searchValue && searchFields.length > 0) {
+        options.search = searchValue;
+        options.searchFields = searchFields;
+        options.searchMode = "contains";
+      }
+    }
+
+    // Process pagination using new pagination utilities
+    let paginationMetadata: ReturnType<typeof calculatePaginationMetadata> | undefined;
+    if (handlerConfig.pagination) {
+      // Get primary key field for cursor pagination
+      const primaryKeyField = getPrimaryKeyFieldName(entityDef);
+      
+      // Normalize pagination config
+      const normalizedPagination = normalizePaginationConfig(
+        handlerConfig.pagination,
+        context,
+        primaryKeyField,
+        20 // default limit
+      );
+
+      if (normalizedPagination) {
+        // Apply limit and offset to repository options
+        options.limit = normalizedPagination.limit;
+        options.offset = normalizedPagination.offset;
+
+        // For cursor pagination, we need to handle it specially
+        // Since repositories currently only support offset/limit, we'll convert cursor to offset
+        // In a full implementation, repositories would support cursor-based queries natively
+        if (normalizedPagination.type === "cursor" && normalizedPagination.cursorValue !== undefined) {
+          // Note: Full cursor support would require repository-level changes
+          // For now, we'll use offset-based pagination and let the repository handle it
+          // The cursor value can be used for filtering if the repository supports it
+          // This is a limitation - true cursor pagination needs repository support
+        }
+      }
+    }
+
+    // Process orderBy
+    if (handlerConfig.orderBy) {
+      if (typeof handlerConfig.orderBy === "string") {
+        // Reference to query parameter
+        const orderByValue = resolveParameter(handlerConfig.orderBy, context);
+        if (orderByValue) {
+          const orderByStr = String(orderByValue);
+          if (orderByStr.includes(":")) {
+            // Format: field:direction
+            const [field, direction] = orderByStr.split(":");
+            options.orderBy = {
+              field: field.trim(),
+              direction: (direction?.trim().toLowerCase() === "desc" ? "desc" : "asc") as "asc" | "desc",
+            };
+          } else {
+            // Just field name
+            options.orderBy = {
+              field: orderByStr,
+            };
+          }
+        }
+      } else {
+        // Direct object configuration
+        options.orderBy = {
+          field: handlerConfig.orderBy.field,
+          direction: handlerConfig.orderBy.direction || "asc",
+        };
+      }
+    }
+
+    // Call repository.findAll with built options
+    const results = await repository.findAll(options);
+
+    // Handle pagination metadata wrapping (always wrap when pagination is enabled)
+    if (handlerConfig.pagination) {
+      const primaryKeyField = getPrimaryKeyFieldName(entityDef);
+      const normalizedPagination = normalizePaginationConfig(
+        handlerConfig.pagination,
+        context,
+        primaryKeyField,
+        20
+      );
+
+      if (normalizedPagination) {
+        // Always calculate and wrap metadata when pagination is enabled
+        paginationMetadata = calculatePaginationMetadata(
+          normalizedPagination,
+          results as unknown[],
+          undefined // total count - would require a separate COUNT query
+        );
+
+        return wrapPaginatedResponse(
+          results as unknown[],
+          paginationMetadata,
+          normalizedPagination.metadata
+        );
+      }
+    }
+
+    return results;
+  };
+}
+
 function createDefaultHandler(
   endpoint: NonNullable<YamaConfig["endpoints"]>[number],
-  responseType?: string
+  responseType?: string,
+  config?: YamaConfig,
+  entities?: YamaEntities
 ): HandlerFunction {
-  return async (request: HttpRequest, reply: HttpResponse) => {
-    // If response type is specified, return an empty object (will be validated)
-    // Otherwise, return a simple success message
-    if (responseType) {
-      return {};
+  return async (context: HandlerContext) => {
+    // If no response type, return placeholder message
+    if (!responseType) {
+      return {
+        message: `Endpoint ${endpoint.method} ${endpoint.path} is configured but no handler is implemented`,
+        path: endpoint.path,
+        method: endpoint.method,
+      };
     }
-    
-    return {
-      message: `Endpoint ${endpoint.method} ${endpoint.path} is configured but no handler is implemented`,
-      path: endpoint.path,
-      method: endpoint.method,
-    };
+
+    // Try to detect entity from response type
+    if (entities && config) {
+      const entityName = extractEntityNameFromResponseType(responseType, entities);
+      
+      if (entityName && context.entities && context.entities[entityName]) {
+        const repository = context.entities[entityName] as any;
+        const entityDef = entities[entityName];
+        const method = endpoint.method.toUpperCase();
+
+        try {
+          // GET /path (list) - expects EntityArray response
+          if (method === "GET" && responseType.endsWith("Array")) {
+            const options = mapQueryToFindAllOptions(context.query, entityDef, entities?.[entityName]);
+            const results = await repository.findAll(options);
+            
+            // Detect pagination and wrap with metadata if present
+            const detectedPagination = detectPaginationFromQuery(context.query);
+            if (detectedPagination) {
+              const metadata = calculatePaginationMetadata(
+                detectedPagination,
+                results as unknown[],
+                undefined // total count - would require a separate COUNT query
+              );
+              // Always wrap with metadata (better DX)
+              return wrapPaginatedResponse(results as unknown[], metadata);
+            }
+            
+            return results;
+          }
+
+          // GET /path/:id (single) - expects Entity response
+          if (method === "GET" && !responseType.endsWith("Array")) {
+            // Extract primary key from params
+            const primaryKey = getPrimaryKeyFieldName(entityDef);
+            const id = context.params[primaryKey] || context.params.id;
+            
+            if (!id) {
+              throw new Error(`Missing required parameter: ${primaryKey}`);
+            }
+
+            const result = await repository.findById(String(id));
+            if (!result) {
+              context.status(404);
+              return { error: "Not found" };
+            }
+            return result;
+          }
+
+          // POST /path - create entity
+          if (method === "POST") {
+            if (!context.body) {
+              throw new Error("Request body is required");
+            }
+            const result = await repository.create(context.body);
+            context.status(201);
+            return result;
+          }
+
+          // PUT /path/:id - full update
+          if (method === "PUT") {
+            const primaryKey = getPrimaryKeyFieldName(entityDef);
+            const id = context.params[primaryKey] || context.params.id;
+            
+            if (!id) {
+              throw new Error(`Missing required parameter: ${primaryKey}`);
+            }
+            if (!context.body) {
+              throw new Error("Request body is required");
+            }
+
+            const result = await repository.update(String(id), context.body);
+            if (!result) {
+              context.status(404);
+              return { error: "Not found" };
+            }
+            return result;
+          }
+
+          // PATCH /path/:id - partial update
+          if (method === "PATCH") {
+            const primaryKey = getPrimaryKeyFieldName(entityDef);
+            const id = context.params[primaryKey] || context.params.id;
+            
+            if (!id) {
+              throw new Error(`Missing required parameter: ${primaryKey}`);
+            }
+            if (!context.body) {
+              throw new Error("Request body is required");
+            }
+
+            const result = await repository.update(String(id), context.body);
+            if (!result) {
+              context.status(404);
+              return { error: "Not found" };
+            }
+            return result;
+          }
+
+          // DELETE /path/:id
+          if (method === "DELETE") {
+            const primaryKey = getPrimaryKeyFieldName(entityDef);
+            const id = context.params[primaryKey] || context.params.id;
+            
+            if (!id) {
+              throw new Error(`Missing required parameter: ${primaryKey}`);
+            }
+
+            const deleted = await repository.delete(String(id));
+            if (!deleted) {
+              context.status(404);
+              return { error: "Not found" };
+            }
+            context.status(204);
+            return undefined;
+          }
+        } catch (error) {
+          // If repository method fails, re-throw to be caught by error handler
+          throw error;
+        }
+      }
+    }
+
+    // Fallback: return empty object if response type is specified but entity not found
+    // This allows validation to pass but indicates the endpoint needs a handler
+    return {};
   };
+}
+
+/**
+ * Determine if an endpoint requires authentication
+ * 
+ * Returns true if the endpoint needs authentication, false if it's public.
+ * 
+ * Logic (in order of precedence):
+ * 1. If endpoint.auth.required === false, it's explicitly public → return false
+ * 2. If endpoint.auth.required === true or endpoint.auth.roles exists, it requires auth → return true
+ * 3. If endpoint.auth exists (but no explicit required/roles), and config.auth exists → requires auth (default)
+ * 4. If no endpoint.auth but config.auth exists → requires auth (default behavior when global auth is configured)
+ * 5. If neither endpoint.auth nor config.auth exists → public endpoint
+ */
+function needsAuthentication(
+  config: YamaConfig,
+  endpoint: NonNullable<YamaConfig["endpoints"]>[number]
+): boolean {
+  const endpointAuth = endpoint.auth;
+  const configAuth = config.auth;
+
+  // Case 1: Explicitly public endpoint (highest priority)
+  if (endpointAuth?.required === false) {
+    return false;
+  }
+
+  // Case 2: Explicitly requires auth (required === true, roles, permissions, or handler specified)
+  if (
+    endpointAuth?.required === true ||
+    (endpointAuth?.roles && endpointAuth.roles.length > 0) ||
+    (endpointAuth?.permissions && endpointAuth.permissions.length > 0) ||
+    endpointAuth?.handler
+  ) {
+    return true;
+  }
+
+  // Case 3: Endpoint has auth config object but no explicit required flag
+  // If global auth exists, default to requiring auth
+  if (endpointAuth && configAuth) {
+    return true;
+  }
+
+  // Case 4: No endpoint auth config but global auth exists
+  // Default behavior: require auth when global auth is configured
+  if (!endpointAuth && configAuth) {
+    return true;
+  }
+
+  // Case 5: No auth configuration at all - public endpoint
+  return false;
 }
 
 /**
@@ -321,48 +1136,123 @@ function registerRoutes(
   server: unknown,
   config: YamaConfig,
   handlers: Record<string, HandlerFunction>,
-  validator: ReturnType<typeof createSchemaValidator>
+  validator: ReturnType<typeof createSchemaValidator>,
+  globalRateLimiter: RateLimiter | null,
+  repositories?: Record<string, unknown>,
+  dbAdapter?: unknown,
+  cacheAdapter?: unknown,
+  storage?: Record<string, StorageBucket>,
+  realtimeAdapter?: unknown
 ) {
   if (!config.endpoints) {
     return;
   }
 
+  // Cache for endpoint-specific rate limiters (keyed by config hash)
+  const endpointRateLimiters = new Map<string, RateLimiter>();
+
   for (const endpoint of config.endpoints) {
-    const { path, method, handler: handlerName, description, params, body, query, response } = endpoint;
+    const { path, method, handler: handlerConfig, description, params, body, query, response } = endpoint;
     
     // Use custom handler if provided, otherwise use default handler
     let handlerFn: HandlerFunction;
+    let handlerLabel: string;
     
-    if (handlerName) {
+    // Check if handler is a query handler (object with type: "query")
+    if (handlerConfig && typeof handlerConfig === "object" && handlerConfig.type === "query") {
+      handlerFn = createQueryHandler(endpoint, config, config.entities);
+      handlerLabel = "query";
+    } else if (typeof handlerConfig === "string") {
+      // Handler is a string - try to load from file
+      const handlerName = handlerConfig;
       handlerFn = handlers[handlerName];
       if (!handlerFn) {
         console.warn(
           `⚠️  Handler "${handlerName}" not found for ${method} ${path}, using default handler`
         );
-        handlerFn = createDefaultHandler(endpoint, response?.type);
+        handlerFn = createDefaultHandler(endpoint, response?.type, config, config.entities);
+        handlerLabel = "default";
+      } else {
+        handlerLabel = handlerName;
       }
     } else {
       // No handler specified - use default handler
-      handlerFn = createDefaultHandler(endpoint, response?.type);
+      handlerFn = createDefaultHandler(endpoint, response?.type, config, config.entities);
+      handlerLabel = "default";
       console.log(
         `ℹ️  No handler specified for ${method} ${path}, using default handler`
       );
     }
 
+    // Determine if this endpoint requires authentication
+    // This check happens once at route registration time, not on every request
+    const requiresAuth = needsAuthentication(config, endpoint);
+
     // Wrap handler with validation and auth
-    // Note: Handlers can use either normalized HttpRequest/HttpResponse or original engine types
+    // The wrapped handler receives request/reply from the adapter, then creates context for user handlers
     const wrappedHandler: RouteHandler = async (request: HttpRequest, reply: HttpResponse) => {
       try {
-        // Get original request/reply for compatibility with existing handlers
-        const originalRequest = (request as HttpRequest & { _original?: unknown })._original;
-        const originalReply = (reply as HttpResponse & { _original?: unknown })._original;
-
-        // Authenticate and authorize request
-        if (config.auth || endpoint.auth) {
+        // ============================================
+        // AUTHENTICATION & AUTHORIZATION
+        // ============================================
+        // Public endpoints: Skip auth entirely for better performance
+        // Secured endpoints: Authenticate and authorize before processing request
+        let authContext: AuthContext | undefined;
+        
+        if (requiresAuth) {
+          // --- SECURED ENDPOINT ---
+          // Load custom auth handler if specified
+          // Note: Custom auth handlers receive authContext and should return boolean
+          // For complex cases requiring request data, handlers can access it via closure
+          let authHandler: ((authContext: AuthContext, ...args: unknown[]) => Promise<boolean> | boolean) | undefined;
+          if (endpoint.auth?.handler) {
+            const handlerName = endpoint.auth.handler;
+            const loadedHandler = handlers[handlerName];
+            if (loadedHandler) {
+              // Wrap handler - custom auth handlers should work with authContext
+              // They can access request data through the closure if needed
+              authHandler = async (authContext: AuthContext) => {
+                try {
+                  // Create a minimal handler context for auth check
+                  // Auth handlers can access request via closure if needed
+                  const authCheckContext = {
+                    authenticated: authContext.authenticated,
+                    user: authContext.user,
+                    // Pass request info for complex checks
+                    request: {
+                      method,
+                      path,
+                      params: request.params || {},
+                      query: request.query || {},
+                      body: request.body,
+                    },
+                  };
+                  
+                  // Call the handler - it should return a boolean or throw
+                  // For now, we'll call it with a minimal context that has auth info
+                  // In the future, we might want to pass request data explicitly
+                  const result = await loadedHandler(authCheckContext as any);
+                  // If handler returns a value, treat truthy as authorized
+                  // If handler throws, it will be caught below
+                  return result !== false && result !== null && result !== undefined;
+                } catch (error) {
+                  // Handler threw an error - treat as unauthorized
+                  return false;
+                }
+              };
+            } else {
+              console.warn(
+                `⚠️  Auth handler "${handlerName}" not found for ${method} ${path}, authorization will fail`
+              );
+            }
+          }
+          
+          // Authenticate using configured providers and authorize based on endpoint requirements
           const authResult = await authenticateAndAuthorize(
             request.headers,
             config.auth,
-            endpoint.auth
+            endpoint.auth,
+            authHandler
           );
 
           if (!authResult.authorized) {
@@ -373,11 +1263,58 @@ function registerRoutes(
             return;
           }
 
-          // Attach auth context to request for handlers to use
-          (request as HttpRequest & { auth: typeof authResult.context }).auth = authResult.context;
-          // Also attach to original request if available
-          if (originalRequest) {
-            (originalRequest as { auth: typeof authResult.context }).auth = authResult.context;
+          authContext = authResult.context;
+        } else {
+          // --- PUBLIC ENDPOINT ---
+          // No authentication required - skip auth checks for performance
+          authContext = { authenticated: false };
+        }
+
+        // Check rate limit (after auth so we can use user ID if available)
+        const rateLimitConfig = endpoint.rateLimit || config.rateLimit;
+        if (rateLimitConfig) {
+          let rateLimiter = globalRateLimiter;
+          
+          // If no global rate limiter and endpoint has its own config, get or create endpoint-specific limiter
+          if (!rateLimiter && endpoint.rateLimit) {
+            const configKey = JSON.stringify(endpoint.rateLimit);
+            if (!endpointRateLimiters.has(configKey)) {
+              // Use cache adapter if available (works with any cache implementation)
+              endpointRateLimiters.set(configKey, await createRateLimiterFromConfig(endpoint.rateLimit as any, cacheAdapter as any));
+            }
+            rateLimiter = endpointRateLimiters.get(configKey)!;
+          }
+          
+          // If still no rate limiter, create one from global config and cache it (shouldn't happen if globalRateLimiter initialized correctly)
+          if (!rateLimiter && config.rateLimit) {
+            const globalConfigKey = JSON.stringify(config.rateLimit);
+            if (!endpointRateLimiters.has(globalConfigKey)) {
+              // Use cache adapter if available (works with any cache implementation)
+              endpointRateLimiters.set(globalConfigKey, await createRateLimiterFromConfig(config.rateLimit as any, cacheAdapter as any));
+            }
+            rateLimiter = endpointRateLimiters.get(globalConfigKey)!;
+          }
+          
+          if (rateLimiter) {
+            const rateLimitResult = await rateLimiter.check(request, authContext, rateLimitConfig as any);
+          
+            // Add rate limit headers to response
+            const rateLimitHeaders = formatRateLimitHeaders(rateLimitResult);
+            const originalReply = reply._original as any;
+            if (originalReply && typeof originalReply.header === "function") {
+              for (const [key, value] of Object.entries(rateLimitHeaders)) {
+                originalReply.header(key, value);
+              }
+            }
+            
+            if (!rateLimitResult.allowed) {
+              reply.status(429).send({
+                error: "Too Many Requests",
+                message: `Rate limit exceeded. Try again after ${Math.ceil(rateLimitResult.resetAfter / 1000)} seconds.`,
+                retryAfter: Math.ceil(rateLimitResult.resetAfter / 1000),
+              });
+              return;
+            }
           }
         }
 
@@ -437,18 +1374,34 @@ function registerRoutes(
           }
         }
 
-        // Call handler - handlers can use normalized types or access _original for engine-specific types
-        // For backward compatibility with Fastify handlers, we pass the normalized types
-        // but handlers can access request._original and reply._original if needed
-        const result = await handlerFn(request, reply);
+        // Create handler context
+        const context = createHandlerContext(request, reply, authContext, repositories, dbAdapter, cacheAdapter, storage, realtimeAdapter);
+
+        // Call handler with context
+        const result = await handlerFn(context);
+        
+        // Determine status code: use handler-set status, or default based on method
+        let statusCode = context._statusCode;
+        if (statusCode === undefined) {
+          // Default status codes
+          if (method.toUpperCase() === "POST") {
+            statusCode = 201;
+          } else if (method.toUpperCase() === "DELETE") {
+            statusCode = 204;
+          } else {
+            statusCode = 200;
+          }
+        }
         
         // Validate response if response model is specified
         if (response?.type && result !== undefined) {
           const responseValidation = validator.validate(response.type, result);
           
           if (!responseValidation.valid) {
-            const handlerLabel = handlerName || "default";
-            console.error(`❌ Response validation failed for ${handlerLabel}:`, responseValidation.errors);
+            const currentHandlerLabel = typeof handlerConfig === "object" && handlerConfig.type === "query" 
+              ? "query" 
+              : (typeof handlerConfig === "string" ? handlerConfig : "default");
+            console.error(`❌ Response validation failed for ${currentHandlerLabel}:`, responseValidation.errors);
             // In development, return validation errors; in production, log and return generic error
             if (process.env.NODE_ENV === "development") {
               reply.status(500).send({
@@ -467,10 +1420,20 @@ function registerRoutes(
           }
         }
 
+        // Send response with appropriate status code
+        if (statusCode === 204) {
+          // No content - don't send body
+          reply.status(statusCode).send(undefined);
+        } else {
+          reply.status(statusCode).send(result);
+        }
+        
         return result;
       } catch (error) {
-        const handlerLabel = handlerName || "default";
-        console.error(`Error in handler ${handlerLabel}:`, error);
+        const currentHandlerLabel = typeof handlerConfig === "object" && handlerConfig.type === "query" 
+          ? "query" 
+          : (typeof handlerConfig === "string" ? handlerConfig : "default");
+        console.error(`Error in handler ${currentHandlerLabel}:`, error);
         reply.status(500).send({
           error: "Internal server error",
           message: error instanceof Error ? error.message : String(error)
@@ -481,9 +1444,16 @@ function registerRoutes(
     // Register route using adapter
     serverAdapter.registerRoute(server, method, path, wrappedHandler);
 
-    const handlerLabel = handlerName || "default";
+    // Log route registration with clear auth status
+    const currentHandlerLabel = typeof handlerConfig === "object" && handlerConfig.type === "query" 
+      ? "query" 
+      : (typeof handlerConfig === "string" ? handlerConfig : "default");
+    const authStatus = requiresAuth 
+      ? ` [SECURED${endpoint.auth?.roles ? `, roles: ${endpoint.auth.roles.join(", ")}` : ""}]`
+      : " [PUBLIC]";
+    
     console.log(
-      `✅ Registered route: ${method.toUpperCase()} ${path} -> ${handlerLabel}${description ? ` (${description})` : ""}${params ? ` [validates path params]` : ""}${query ? ` [validates query params]` : ""}${body?.type ? ` [validates body: ${body.type}]` : ""}${response?.type ? ` [validates response: ${response.type}]` : ""}${endpoint.auth ? ` [auth: ${endpoint.auth.required !== false ? "required" : "optional"}${endpoint.auth.roles ? `, roles: ${endpoint.auth.roles.join(", ")}` : ""}]` : ""}`
+      `✅ Registered route: ${method.toUpperCase()} ${path} -> ${currentHandlerLabel}${authStatus}${description ? ` (${description})` : ""}${params ? ` [validates path params]` : ""}${query ? ` [validates query params]` : ""}${body?.type ? ` [validates body: ${body.type}]` : ""}${response?.type ? ` [validates response: ${response.type}]` : ""}`
     );
   }
 }
@@ -506,6 +1476,19 @@ export async function startYamaNodeRuntime(
   
   // Store loaded plugins
   const loadedPlugins = new Map<string, YamaPlugin>();
+  
+  // Rate limiter (initialized later if config has rateLimit)
+  let globalRateLimiter: RateLimiter | null = null;
+  
+  // Cache adapter (initialized from cache plugin if available)
+  let cacheAdapter: unknown = null;
+
+  // Storage buckets (initialized from storage plugins)
+  const storageBuckets: Record<string, StorageBucket> = {};
+
+  // Realtime adapter (initialized from realtime plugin if available)
+  let realtimeAdapter: unknown = null;
+  let realtimePluginApi: any = null;
 
   // Load and parse YAML config if provided
   let config: YamaConfig | null = null;
@@ -586,11 +1569,15 @@ export async function startYamaNodeRuntime(
                   // PGlite can work without URL - defaults to in-memory
                   dbAdapter = createDatabaseAdapter(dialect, dbConfig);
                   await dbAdapter.init(dbConfig);
+                  // Register global database adapter for auth providers
+                  registerGlobalDatabaseAdapter(dbAdapter);
                   console.log("✅ Database connection initialized (pglite - in-memory)");
                 } else if (dbConfig.url && !dbConfig.url.includes("user:password")) {
                   // PostgreSQL requires URL
                   dbAdapter = createDatabaseAdapter(dialect, dbConfig);
                   await dbAdapter.init(dbConfig);
+                  // Register global database adapter for auth providers
+                  registerGlobalDatabaseAdapter(dbAdapter);
                   console.log("✅ Database connection initialized (postgresql)");
                 } else {
                   console.log("⚠️  Database URL not configured - running without database");
@@ -598,6 +1585,47 @@ export async function startYamaNodeRuntime(
               } catch (error) {
                 console.warn("⚠️  Failed to initialize database (continuing without DB):", error instanceof Error ? error.message : String(error));
               }
+            }
+            
+            // If this is a cache plugin, store the cache adapter
+            if (plugin.category === "cache" && pluginApi && typeof pluginApi === "object" && "adapter" in pluginApi) {
+              cacheAdapter = pluginApi.adapter;
+              console.log("✅ Cache adapter initialized");
+            }
+
+            // If this is a storage plugin, collect storage buckets
+            if (plugin.category === "storage" && pluginApi && typeof pluginApi === "object") {
+              if ("buckets" in pluginApi && typeof pluginApi.buckets === "object" && pluginApi.buckets !== null) {
+                // S3 plugin returns buckets object
+                Object.assign(storageBuckets, pluginApi.buckets);
+                console.log(`✅ Storage buckets initialized: ${Object.keys(pluginApi.buckets).join(", ")}`);
+              } else if ("bucket" in pluginApi) {
+                // FS plugin returns single bucket (also exposed as buckets.default)
+                storageBuckets.default = pluginApi.bucket;
+                console.log("✅ Storage bucket initialized (default)");
+              }
+            }
+
+            // If this is a realtime plugin, store the adapter
+            if (plugin.category === "realtime" && pluginApi && typeof pluginApi === "object" && "adapter" in pluginApi) {
+              realtimeAdapter = pluginApi.adapter;
+              realtimePluginApi = pluginApi;
+              
+              // Pass Redis client if available from cache plugin
+              if (cacheAdapter && typeof (cacheAdapter as any).getRedisClient === "function") {
+                const redisClient = (cacheAdapter as any).getRedisClient();
+                if (redisClient && pluginApi.init) {
+                  // Re-initialize with Redis client
+                  const realtimeConfig = typeof config.plugins === "object" && !Array.isArray(config.plugins)
+                    ? (config.plugins[pluginName] || {}) as any
+                    : {};
+                  realtimeConfig.redisClient = redisClient;
+                  // Note: We can't re-init here, but we can pass it via the plugin API
+                  // The plugin will check for redisClient in its setup
+                }
+              }
+              
+              console.log("✅ Realtime adapter initialized");
             }
           } catch (error) {
             console.warn(`⚠️  Failed to load plugin ${pluginName}:`, error instanceof Error ? error.message : String(error));
@@ -608,12 +1636,64 @@ export async function startYamaNodeRuntime(
 
       // Convert entities to schemas and merge with explicit schemas
       const entitySchemas = config.entities ? entitiesToSchemas(config.entities) : {};
-      const allSchemas = mergeSchemas(config.schemas, entitySchemas);
-
-      // Register schemas for validation
-      if (Object.keys(allSchemas).length > 0) {
-        validator.registerSchemas(allSchemas);
-        console.log(`✅ Registered ${Object.keys(allSchemas).length} schema(s) for validation`);
+      
+      // Generate CRUD input schemas and array schemas for entities with CRUD enabled
+      if (config.entities) {
+        const crudInputSchemas: YamaSchemas = {};
+        const crudArraySchemas: YamaSchemas = {};
+        
+        for (const [entityName, entityDef] of Object.entries(config.entities)) {
+          if (entityDef.crud) {
+            const inputSchemas = generateCrudInputSchemas(entityName, entityDef);
+            const arraySchemas = generateArraySchema(entityName, entityDef);
+            Object.assign(crudInputSchemas, inputSchemas);
+            Object.assign(crudArraySchemas, arraySchemas);
+          }
+        }
+        
+        // Merge: entity schemas -> CRUD input schemas -> CRUD array schemas -> explicit schemas
+        const mergedWithInputs = mergeSchemas(crudInputSchemas, entitySchemas);
+        const mergedWithArrays = mergeSchemas(crudArraySchemas, mergedWithInputs);
+        const allSchemas = mergeSchemas(config.schemas, mergedWithArrays);
+        
+        // Register schemas for validation
+        if (Object.keys(allSchemas).length > 0) {
+          validator.registerSchemas(allSchemas);
+          console.log(`✅ Registered ${Object.keys(allSchemas).length} schema(s) for validation`);
+        }
+        
+        // Generate CRUD endpoints and merge with existing endpoints
+        const crudEndpoints = generateAllCrudEndpoints(config.entities);
+        if (crudEndpoints.length > 0) {
+          // Convert CrudEndpoint[] to YamaConfig["endpoints"] format
+          const convertedCrudEndpoints: NonNullable<YamaConfig["endpoints"]> = crudEndpoints.map(ep => ({
+            path: ep.path,
+            method: ep.method,
+            description: ep.description,
+            params: ep.params,
+            query: ep.query,
+            body: ep.body,
+            response: ep.response,
+            auth: ep.auth,
+            // No handler specified - will use default handler
+          }));
+          
+          // Merge CRUD endpoints with existing endpoints
+          config.endpoints = [
+            ...(config.endpoints || []),
+            ...convertedCrudEndpoints,
+          ];
+          
+          console.log(`✅ Generated ${crudEndpoints.length} CRUD endpoint(s) from entities`);
+        }
+      } else {
+        const allSchemas = mergeSchemas(config.schemas, entitySchemas);
+        
+        // Register schemas for validation
+        if (Object.keys(allSchemas).length > 0) {
+          validator.registerSchemas(allSchemas);
+          console.log(`✅ Registered ${Object.keys(allSchemas).length} schema(s) for validation`);
+        }
       }
 
       // Determine handlers directory (src/handlers relative to YAML file)
@@ -624,6 +1704,33 @@ export async function startYamaNodeRuntime(
     }
   }
 
+  // Load entity repositories for handler context
+  let repositories: Record<string, unknown> = {};
+  if (config?.entities && configDir) {
+    try {
+      repositories = await loadRepositories(configDir, config.entities);
+      if (Object.keys(repositories).length > 0) {
+        console.log(`✅ Loaded ${Object.keys(repositories).length} repository/repositories for handler context`);
+      }
+    } catch (error) {
+      console.warn(
+        "⚠️  Failed to load repositories (handlers can still use manual imports):",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
+  // Initialize rate limiter if global config is provided
+  if (config?.rateLimit) {
+    try {
+      // Use cache adapter if available (works with any cache implementation)
+      globalRateLimiter = await createRateLimiterFromConfig(config.rateLimit as any, cacheAdapter as any);
+      console.log("✅ Initialized rate limiter");
+    } catch (error) {
+      console.warn(`⚠️  Failed to initialize rate limiter: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   // Create HTTP server adapter
   const serverEngine = config?.server?.engine || "fastify";
   if (serverEngine !== "fastify") {
@@ -631,6 +1738,35 @@ export async function startYamaNodeRuntime(
   }
   serverAdapter = createHttpServerAdapter("fastify", config?.server?.options);
   server = serverAdapter.createServer(config?.server?.options);
+
+  // Setup realtime WebSocket server if plugin is loaded
+  if (realtimePluginApi && typeof realtimePluginApi.setupServer === "function") {
+    try {
+      await realtimePluginApi.setupServer(server, config?.auth);
+      console.log("✅ Realtime WebSocket server initialized");
+      
+      // Register channels from config
+      if (config?.realtime?.channels && realtimePluginApi.registerChannel) {
+        for (const channel of config.realtime.channels) {
+          realtimePluginApi.registerChannel(channel);
+        }
+        console.log(`✅ Registered ${config.realtime.channels.length} realtime channel(s)`);
+      }
+      
+      // Setup entity events if configured
+      if (config?.realtime?.entities && realtimePluginApi.setupEntityEvents) {
+        realtimePluginApi.setupEntityEvents(config.realtime.entities, repositories);
+        const entityCount = Object.keys(config.realtime.entities).filter(
+          (name) => config.realtime?.entities?.[name]?.enabled
+        ).length;
+        if (entityCount > 0) {
+          console.log(`✅ Enabled realtime events for ${entityCount} entity/entities`);
+        }
+      }
+    } catch (error) {
+      console.warn("⚠️  Failed to setup realtime WebSocket server:", error instanceof Error ? error.message : String(error));
+    }
+  }
 
   // Register built-in routes using adapter
   serverAdapter.registerRoute(server, "GET", "/health", async (request: HttpRequest, reply: HttpResponse) => {
@@ -650,8 +1786,16 @@ export async function startYamaNodeRuntime(
       reply.status(404).send({ error: "No config loaded" });
       return;
     }
-    const openAPISpec = generateOpenAPI(config);
-    reply.type("application/json").send(openAPISpec);
+    try {
+      const generateOpenAPI = await getGenerateOpenAPI();
+      const openAPISpec = generateOpenAPI(config as any);
+      reply.type("application/json").send(openAPISpec);
+    } catch (error) {
+      reply.status(500).send({ 
+        error: "Failed to generate OpenAPI spec",
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
   });
 
   serverAdapter.registerRoute(server, "GET", "/docs", async (request: HttpRequest, reply: HttpResponse) => {
@@ -659,10 +1803,12 @@ export async function startYamaNodeRuntime(
       reply.status(404).send({ error: "No config loaded" });
       return;
     }
-    const openAPISpec = generateOpenAPI(config);
-    const specJson = JSON.stringify(openAPISpec, null, 2);
-    
-    const html = `<!DOCTYPE html>
+    try {
+      const generateOpenAPI = await getGenerateOpenAPI();
+      const openAPISpec = generateOpenAPI(config as any);
+      const specJson = JSON.stringify(openAPISpec, null, 2);
+      
+      const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -708,14 +1854,65 @@ export async function startYamaNodeRuntime(
   </script>
 </body>
 </html>`;
-    
-    reply.type("text/html").send(html);
+      
+      reply.type("text/html").send(html);
+    } catch (error) {
+      reply.status(500).send({ 
+        error: "Failed to generate OpenAPI spec",
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
   });
+
+  // Register OAuth endpoints if auto-generation is enabled
+  if (config?.auth?.providers) {
+    const oauthProviders = getAllOAuthProviders();
+    for (const provider of config.auth.providers) {
+      // Check if this is an OAuth provider
+      if (provider.type.startsWith("oauth-")) {
+        const oauthMetadata = oauthProviders.get(provider.type.toLowerCase());
+        const autoGenerate = (provider as any).autoGenerateEndpoints !== false; // Default to true
+        
+        if (oauthMetadata && autoGenerate) {
+          const providerName = provider.type.replace("oauth-", "");
+          
+          // Register OAuth initiation endpoint
+          serverAdapter.registerRoute(
+            server,
+            "GET",
+            `/auth/${providerName}`,
+            async (request: HttpRequest, reply: HttpResponse) => {
+              if (oauthMetadata.handleOAuthFlow) {
+                return await oauthMetadata.handleOAuthFlow(request, reply);
+              }
+              reply.status(501).send({ error: "OAuth flow not implemented" });
+            }
+          );
+          
+          // Register OAuth callback endpoint
+          const callbackPath = oauthMetadata.callbackPath || `/auth/${providerName}/callback`;
+          serverAdapter.registerRoute(
+            server,
+            "GET",
+            callbackPath,
+            async (request: HttpRequest, reply: HttpResponse) => {
+              if (oauthMetadata.handleOAuthFlow) {
+                return await oauthMetadata.handleOAuthFlow(request, reply);
+              }
+              reply.status(501).send({ error: "OAuth callback not implemented" });
+            }
+          );
+          
+          console.log(`✅ Auto-generated OAuth endpoints for ${provider.type}`);
+        }
+      }
+    }
+  }
 
   // Load handlers and register routes
   if (config?.endpoints && handlersDir && serverAdapter && configDir) {
     const handlers = await loadHandlers(handlersDir, configDir);
-    registerRoutes(serverAdapter, server, config, handlers, validator);
+    registerRoutes(serverAdapter, server, config, handlers, validator, globalRateLimiter, repositories, dbAdapter || null, cacheAdapter || null, storageBuckets, realtimeAdapter || null);
   }
 
   // Call onStart lifecycle hooks for all plugins

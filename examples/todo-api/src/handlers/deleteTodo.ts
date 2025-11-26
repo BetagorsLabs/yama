@@ -1,22 +1,22 @@
-import type { HttpRequest, HttpResponse } from "@betagors/yama-core";
-import { todoRepository } from "@yama/db";
+import type { DeleteTodoHandlerContext } from "@yama/gen";
 
 export async function deleteTodo(
-  request: HttpRequest,
-  reply: HttpResponse
-) {
-  const params = request.params as { id: string };
-  const { id } = params;
-  const deleted = await todoRepository.delete(id);
+  context: DeleteTodoHandlerContext
+): Promise<{ error: string; message: string } | undefined> {
+  // context.params.id is already typed as string
+  const { id } = context.params;
+  const deleted = await context.entities.Todo.delete(id);
 
   if (!deleted) {
-    reply.status(404).send({
+    context.status(404);
+    return {
       error: "Not found",
       message: `Todo with id "${id}" not found`
-    });
-    return;
+    };
   }
 
-  reply.status(204).send();
+  // Framework automatically sets 204 for DELETE, but we can be explicit
+  context.status(204);
+  return undefined;
 }
 

@@ -1,19 +1,12 @@
-import type { HttpRequest, HttpResponse } from "@betagors/yama-core";
-import { todoRepository } from "@yama/db";
-import type { TodoList } from "@yama/types";
+import type { GetTodosHandlerContext, TodoList } from "@yama/gen";
 
 export async function getTodos(
-  request: HttpRequest,
-  reply: HttpResponse
+  context: GetTodosHandlerContext
 ): Promise<TodoList> {
-  const query = request.query as {
-    completed?: boolean;
-    limit?: number;
-    offset?: number;
-  };
-  const { completed, limit, offset = 0 } = query;
+  // context.query is already typed with completed, limit, offset
+  const { completed, limit, offset = 0 } = context.query;
   
-  const todos = await todoRepository.findAll({
+  const todos = await context.entities.Todo.findAll({
     completed,
     limit,
     offset

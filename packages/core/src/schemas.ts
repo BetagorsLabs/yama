@@ -3,17 +3,24 @@ import addFormats from "ajv-formats";
 
 // Type definitions for YAML schema structure
 export interface SchemaField {
-  type?: "string" | "number" | "boolean" | "integer" | "array" | "object";
+  type?: "string" | "number" | "boolean" | "integer" | "array" | "list" | "object";
   required?: boolean;
   default?: unknown;
   format?: string;
-  items?: SchemaField; // For array types
+  items?: SchemaField; // For array/list types
   properties?: Record<string, SchemaField>; // For object types
   min?: number;
   max?: number;
   pattern?: string;
   enum?: unknown[];
   $ref?: string; // Reference to another schema name
+}
+
+/**
+ * Normalize type: convert "list" to "array" for internal processing
+ */
+function normalizeType(type: string | undefined): string | undefined {
+  return type === "list" ? "array" : type;
 }
 
 export interface SchemaDefinition {
@@ -63,8 +70,9 @@ export function fieldToJsonSchema(
     throw new Error(`Field "${fieldName}" must have either a type or $ref`);
   }
 
+  const normalizedType = normalizeType(field.type);
   const schema: Record<string, unknown> = {
-    type: field.type === "integer" ? "integer" : field.type
+    type: normalizedType === "integer" ? "integer" : normalizedType
   };
 
   // Add format if specified
@@ -90,8 +98,8 @@ export function fieldToJsonSchema(
     schema.maximum = field.max;
   }
 
-  // Handle array types
-  if (field.type === "array" && field.items) {
+  // Handle array/list types
+  if ((field.type === "array" || field.type === "list") && field.items) {
     schema.items = fieldToJsonSchema(field.items, "item", schemas, visited);
   }
 
@@ -237,7 +245,7 @@ export function createSchemaValidator(): SchemaValidator {
 }
 
 // Authentication/Authorization types
-export type AuthProviderType = "jwt" | "api-key";
+export type AuthProviderType = "jwt" | "api-key" | "basic" | string; // string allows for oauth-* providers
 
 export interface JwtAuthProvider {
   type: "jwt";
@@ -253,15 +261,56 @@ export interface ApiKeyAuthProvider {
   validate?: (apiKey: string) => Promise<boolean> | boolean;
 }
 
-export type AuthProvider = JwtAuthProvider | ApiKeyAuthProvider;
+export interface BasicAuthProviderStatic {
+  type: "basic";
+  mode: "static";
+  identifier: string;
+  password: string;
+}
+
+export interface BasicAuthProviderDatabase {
+  type: "basic";
+  mode: "database";
+  userEntity: string;
+  identifierField?: string; // Field to match identifier against (e.g., "email", "username")
+  passwordField?: string; // Field containing password hash (default: "passwordHash")
+}
+
+export type BasicAuthProvider = BasicAuthProviderStatic | BasicAuthProviderDatabase;
+
+export interface OAuthAuthProvider {
+  type: string; // e.g., "oauth-google", "oauth-github"
+  clientId: string;
+  clientSecret: string;
+  redirectUri?: string;
+  autoGenerateEndpoints?: boolean; // Default: true
+  [key: string]: unknown; // Allow provider-specific config
+}
+
+export type AuthProvider = JwtAuthProvider | ApiKeyAuthProvider | BasicAuthProvider | OAuthAuthProvider;
 
 export interface AuthConfig {
   providers: AuthProvider[];
+  /**
+   * Optional role-to-permission mapping for permission-based authorization
+   * Example: { admin: { permissions: ["*"] }, user: { permissions: ["posts:read", "posts:create"] } }
+   */
+  roles?: Record<string, { permissions: string[] }>;
 }
 
 export interface EndpointAuth {
   required?: boolean;
   roles?: string[];
+  /**
+   * Required permissions for this endpoint (permission-based authorization)
+   * User must have at least one of these permissions (derived from their roles)
+   */
+  permissions?: string[];
+  /**
+   * Custom authorization handler function name
+   * Handler will be called with authContext and should return boolean or throw error
+   */
+  handler?: string;
   provider?: string; // Provider type or name to use
 }
 
@@ -275,6 +324,25 @@ export interface AuthContext {
   };
   provider?: string;
   token?: string;
+}
+
+// Rate limiting types
+export type RateLimitKeyStrategy = "ip" | "user" | "both";
+export type RateLimitStoreType = "memory" | "redis";
+
+export interface RateLimitConfig {
+  maxRequests: number;
+  windowMs: number;
+  keyBy?: RateLimitKeyStrategy;
+  store?: RateLimitStoreType;
+  redis?: {
+    url?: string;
+    host?: string;
+    port?: number;
+    password?: string;
+    db?: number;
+    [key: string]: unknown;
+  };
 }
 
 

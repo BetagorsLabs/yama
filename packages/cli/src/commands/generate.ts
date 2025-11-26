@@ -1,6 +1,6 @@
 import { existsSync, writeFileSync, readFileSync } from "fs";
 import { join, dirname, relative } from "path";
-import { generateTypes, type YamaEntities } from "@betagors/yama-core";
+import { generateTypes, generateHandlerContexts, type YamaEntities, type HandlerContextConfig, type AvailableServices } from "@betagors/yama-core";
 import { generateSDK } from "@betagors/yama-sdk";
 import { getDatabasePlugin } from "../utils/db-plugin.ts";
 import { readYamaConfig, ensureDir, getConfigDir } from "../utils/file-utils.ts";
@@ -48,6 +48,10 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
       entities?: YamaEntities;
       endpoints?: unknown;
       plugins?: Record<string, Record<string, unknown>> | string[];
+      realtime?: {
+        entities?: Record<string, any>;
+        channels?: Array<any>;
+      };
     };
     const configDir = getConfigDir(configPath);
     const projectType = detectProjectType(configDir);
@@ -72,15 +76,85 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
       );
     }
 
+    // Generate handler context types
+    if (!options.sdkOnly && config.endpoints) {
+      // Detect available services from configured plugins
+      const availableServices = detectAvailableServices(config.plugins);
+      await generateHandlerContextsFile(
+        config as HandlerContextConfig,
+        typesOutput,
+        configDir,
+        useCache ? cacheDir : undefined,
+        cacheKey || undefined,
+        availableServices
+      );
+    }
+
+    // Generate realtime types
+    if (!options.sdkOnly && config.realtime) {
+      try {
+        // @ts-ignore - optional module
+        const realtimeModule = await import("@betagors/yama-realtime/typegen").catch(() => null);
+        if (!realtimeModule || !realtimeModule.generateRealtimeTypes) {
+          console.warn("⚠️  Realtime type generation not available");
+        } else {
+          const { generateRealtimeTypes } = realtimeModule;
+          const realtimeTypes = generateRealtimeTypes(config);
+          const realtimeTypesPath = join(configDir, ".yama", "realtime-types.ts");
+          const { mkdirSync, writeFileSync } = await import("fs");
+          mkdirSync(join(configDir, ".yama"), { recursive: true });
+          writeFileSync(realtimeTypesPath, realtimeTypes, "utf-8");
+          console.log(`✅ Generated realtime types: ${realtimeTypesPath}`);
+        }
+      } catch (error) {
+        console.warn("⚠️  Failed to generate realtime types:", error instanceof Error ? error.message : String(error));
+      }
+    }
+
     // Generate database code (Drizzle schemas and mappers)
+    let databaseCodeGenerated = false;
     if (!options.sdkOnly && !options.typesOnly && config.entities) {
-      await generateDatabaseCode(config.entities, configDir, typesOutput, config.plugins, configPath);
+      try {
+        await generateDatabaseCode(config.entities, configDir, typesOutput, config.plugins, configPath);
+        databaseCodeGenerated = true;
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes("No database plugin") || errorMsg.includes("database plugin")) {
+          console.log("ℹ️  Database code generation skipped (database plugin not installed)");
+          console.log("   Install a database plugin (e.g., @betagors/yama-postgres) to generate database code");
+        } else {
+          console.warn("⚠️  Failed to generate database code:", errorMsg);
+          console.log("   This is optional - you can install a database plugin later if needed");
+        }
+      }
+    }
+
+    // Regenerate handler contexts after database code to include typed entities
+    if (databaseCodeGenerated && !options.sdkOnly && config.endpoints) {
+      try {
+        // Detect available services from configured plugins
+        const availableServices = detectAvailableServices(config.plugins);
+        await generateHandlerContextsFile(
+          config as HandlerContextConfig,
+          typesOutput,
+          configDir,
+          undefined, // Don't use cache for regeneration
+          undefined,
+          availableServices
+        );
+      } catch (error) {
+        // Silently fail - handler contexts were already generated earlier
+      }
     }
 
     // Generate SDK
     if (!options.typesOnly && config.endpoints) {
-      const sdkOutput = getSdkOutputPath(configPath, options);
-      await generateSdkFile(config, sdkOutput, configDir, typesOutput, options.framework);
+      try {
+        const sdkOutput = getSdkOutputPath(configPath, options);
+        await generateSdkFile(config, sdkOutput, configDir, typesOutput, options.framework);
+      } catch (error) {
+        console.warn("⚠️  Failed to generate SDK:", error instanceof Error ? error.message : String(error));
+      }
     }
 
     // Generate framework helpers if framework is specified
@@ -89,12 +163,30 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
       await updateFrameworkConfig(projectType, options.framework, configDir);
     }
 
+    // Generate main index.ts that exports everything
+    if (!options.sdkOnly) {
+      try {
+        await generateMainIndex(
+          configDir, 
+          config.entities, 
+          Array.isArray(config.endpoints) ? config.endpoints : undefined
+        );
+      } catch (error) {
+        console.warn("⚠️  Failed to generate main index:", error instanceof Error ? error.message : String(error));
+      }
+    }
+
     // Update TypeScript paths
-    updateTypeScriptPaths(configDir);
+    try {
+      updateTypeScriptPaths(configDir);
+    } catch (error) {
+      console.warn("⚠️  Failed to update TypeScript paths:", error instanceof Error ? error.message : String(error));
+    }
 
     console.log("\n✅ Generation complete!");
   } catch (error) {
-    console.error("❌ Generation failed:", error instanceof Error ? error.message : String(error));
+    console.error("\n❌ Generation failed:", error instanceof Error ? error.message : String(error));
+    console.log("\n💡 Tip: Some parts may have succeeded. Check the output above for details.");
     process.exit(1);
   }
 }
@@ -184,6 +276,116 @@ async function generateTypesFile(
   }
 }
 
+/**
+ * Detect which services are available based on configured plugins
+ */
+function detectAvailableServices(
+  plugins?: Record<string, Record<string, unknown>> | string[]
+): AvailableServices {
+  const services: AvailableServices = {};
+  
+  if (!plugins) {
+    return services;
+  }
+
+  const pluginList = Array.isArray(plugins) ? plugins : Object.keys(plugins);
+  
+  for (const pluginName of pluginList) {
+    // Database plugins provide db and entities
+    if (pluginName === "@betagors/yama-pglite" || pluginName === "@betagors/yama-postgres") {
+      services.db = true;
+      services.entities = true;
+    }
+    // Cache plugins provide cache
+    else if (pluginName === "@betagors/yama-redis") {
+      services.cache = true;
+    }
+    // Storage plugins provide storage
+    else if (pluginName === "@betagors/yama-s3") {
+      services.storage = true;
+    }
+    // Realtime plugins provide realtime
+    else if (pluginName === "@betagors/yama-realtime") {
+      services.realtime = true;
+    }
+  }
+  
+  return services;
+}
+
+async function generateHandlerContextsFile(
+  config: HandlerContextConfig,
+  typesOutputPath: string | undefined,
+  configDir: string,
+  cacheDir?: string,
+  cacheKey?: string,
+  availableServices?: AvailableServices
+): Promise<void> {
+  try {
+    // Calculate relative path from handler-contexts.ts to types.ts
+    // Both are in .yama/gen/, so they're siblings
+    const handlerContextsOutputPath = join(configDir, ".yama", "gen", "handler-contexts.ts");
+    let typesImportPath = "./types";
+    if (typesOutputPath) {
+      const relativePath = relative(dirname(handlerContextsOutputPath), typesOutputPath)
+        .replace(/\.ts$/, "")
+        .replace(/\\/g, "/");
+      // Ensure relative imports start with ./ or ../
+      typesImportPath = relativePath.startsWith("./") || relativePath.startsWith("../")
+        ? relativePath
+        : `./${relativePath}`;
+    }
+
+    // Check cache
+    if (cacheDir && cacheKey) {
+      const cacheKeyForHandlerContexts = `${cacheKey}_handler_contexts`;
+      const cached = getCachedFile(cacheDir, cacheKeyForHandlerContexts);
+      if (cached) {
+        ensureDir(dirname(handlerContextsOutputPath));
+        writeFileSync(handlerContextsOutputPath, cached, "utf-8");
+        return;
+      }
+    }
+
+    // Calculate HandlerContext import path - use package name by default
+    // This should resolve from node_modules
+    const handlerContextImportPath = "@betagors/yama-core";
+    
+    // Calculate repository types import path (from .yama/gen/handler-contexts.ts to .yama/gen/db/repository-types.ts)
+    const repositoryTypesPath = join(configDir, ".yama", "gen", "db", "repository-types.ts");
+    let repositoryTypesImportPath: string | undefined;
+    if (existsSync(repositoryTypesPath)) {
+      const relativePath = relative(dirname(handlerContextsOutputPath), repositoryTypesPath)
+        .replace(/\.ts$/, "")
+        .replace(/\\/g, "/");
+      repositoryTypesImportPath = relativePath.startsWith("./") || relativePath.startsWith("../")
+        ? relativePath
+        : `./${relativePath}`;
+    }
+    
+    const handlerContexts = generateHandlerContexts(
+      config, 
+      typesImportPath, 
+      handlerContextImportPath, 
+      repositoryTypesImportPath,
+      availableServices
+    );
+    ensureDir(dirname(handlerContextsOutputPath));
+    writeFileSync(handlerContextsOutputPath, handlerContexts, "utf-8");
+
+    // Save to cache
+    if (cacheDir && cacheKey) {
+      const cacheKeyForHandlerContexts = `${cacheKey}_handler_contexts`;
+      setCachedFile(cacheDir, cacheKeyForHandlerContexts, handlerContexts);
+    }
+
+    console.log(`✅ Generated handler contexts: .yama/gen/handler-contexts.ts`);
+  } catch (error) {
+    console.error("❌ Failed to generate handler contexts:", error instanceof Error ? error.message : String(error));
+    // Don't throw - handler contexts are optional
+  }
+}
+
 // Normalize entities to ensure table names are set
 function normalizeEntities(entities: YamaEntities): YamaEntities {
   const normalized: YamaEntities = {};
@@ -262,8 +464,66 @@ ${entityNames.map(name => {
     writeFileSync(indexPath, indexContent, "utf-8");
     console.log(`✅ Generated index: .yama/gen/db/index.ts`);
   } catch (error) {
-    console.error("❌ Failed to generate database code:", error instanceof Error ? error.message : String(error));
-    throw error;
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    // Don't throw - let the caller handle it gracefully
+    throw new Error(`Database code generation failed: ${errorMsg}`);
+  }
+}
+
+/**
+ * Generate main index.ts file that exports all generated types
+ */
+async function generateMainIndex(
+  configDir: string,
+  entities?: YamaEntities,
+  endpoints?: unknown[]
+): Promise<void> {
+  try {
+    const genDir = join(configDir, ".yama", "gen");
+    const indexPath = join(genDir, "index.ts");
+    
+    // Check what files exist
+    const typesPath = join(genDir, "types.ts");
+    const handlerContextsPath = join(genDir, "handler-contexts.ts");
+    const dbIndexPath = join(genDir, "db", "index.ts");
+    const sdkIndexPath = join(genDir, "sdk", "index.ts");
+    
+    const exports: string[] = [];
+    
+    // Export types if they exist
+    if (existsSync(typesPath)) {
+      exports.push('export * from "./types.js";');
+    }
+    
+    // Export handler contexts if they exist
+    if (existsSync(handlerContextsPath) && endpoints && endpoints.length > 0) {
+      exports.push('export * from "./handler-contexts.js";');
+    }
+    
+    // Export database code if it exists
+    if (existsSync(dbIndexPath) && entities && Object.keys(entities).length > 0) {
+      exports.push('export * from "./db/index.js";');
+    }
+    
+    // Export SDK if it exists
+    if (existsSync(sdkIndexPath) && endpoints && endpoints.length > 0) {
+      exports.push('export * from "./sdk/index.js";');
+    }
+    
+    // Generate index content
+    const indexContent = `// This file is auto-generated from yama.yaml
+// Do not edit manually - your changes will be overwritten
+
+// Export all generated types, handlers, database code, and SDK
+${exports.length > 0 ? exports.join("\n") : "// No generated files to export"}
+`;
+
+    ensureDir(genDir);
+    writeFileSync(indexPath, indexContent, "utf-8");
+    console.log(`✅ Generated main index: .yama/gen/index.ts`);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to generate main index: ${errorMsg}`);
   }
 }
 

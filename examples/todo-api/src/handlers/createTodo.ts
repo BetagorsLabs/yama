@@ -1,15 +1,14 @@
-import type { HttpRequest, HttpResponse } from "@betagors/yama-core";
-import { todoRepository } from "@yama/db";
-import type { CreateTodoInput } from "@yama/types";
+import type { CreateTodoHandlerContext, Todo } from "@yama/gen";
 
 export async function createTodo(
-  request: HttpRequest,
-  reply: HttpResponse
-) {
-  // Validation is now automatic! Just use the data
-  const todo = await todoRepository.create(request.body as CreateTodoInput);
+  context: CreateTodoHandlerContext
+): Promise<Todo> {
+  // context.body is already typed as CreateTodoInput - no need for type assertion!
+  // entities are added at runtime, so we need a type assertion here
 
-  reply.status(201);
+  const { Todo } = context.entities;
+
+  const todo = await Todo.create(context.body);
+  
   return todo;
 }
-

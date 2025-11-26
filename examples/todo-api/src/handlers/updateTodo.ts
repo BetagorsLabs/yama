@@ -1,21 +1,19 @@
-import type { HttpRequest, HttpResponse } from "@betagors/yama-core";
-import { todoRepository } from "@yama/db";
-import type { UpdateTodoInput } from "@yama/types";
+import type { UpdateTodoHandlerContext, Todo } from "@yama/gen";
 
 export async function updateTodo(
-  request: HttpRequest,
-  reply: HttpResponse
-) {
-  const params = request.params as { id: string };
-  const { id } = params;
-  const updated = await todoRepository.update(id, request.body as UpdateTodoInput);
+  context: UpdateTodoHandlerContext
+): Promise<Todo | { error: string; message: string }> {
+  // context.params.id is already typed as string
+  const { id } = context.params;
+  // context.body is already typed as UpdateTodoInput
+  const updated = await context.entities.Todo.update(id, context.body);
 
   if (!updated) {
-    reply.status(404).send({
+    context.status(404);
+    return {
       error: "Not found",
       message: `Todo with id "${id}" not found`
-    });
-    return;
+    };
   }
 
   return updated;

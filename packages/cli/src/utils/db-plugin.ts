@@ -35,8 +35,12 @@ export async function getDatabasePlugin(
           return api;
         }
       } catch (error) {
-        // Log error but continue to try other methods
-        console.warn(`⚠️  Failed to load plugin ${pluginName}:`, error instanceof Error ? error.message : String(error));
+        // Silently continue - we'll try other methods
+        // Only log if it's not a "module not found" error (expected when plugin isn't installed)
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (!errorMsg.includes("Cannot find module") && !errorMsg.includes("not found")) {
+          console.warn(`⚠️  Failed to load plugin ${pluginName}:`, errorMsg);
+        }
       }
     }
   }
@@ -52,9 +56,12 @@ export async function getDatabasePlugin(
         dbPlugin = await loadPlugin(pluginName, projectDir);
         break;
       } catch (error) {
-        // Log error for debugging
-        console.warn(`⚠️  Failed to load plugin ${pluginName}:`, error instanceof Error ? error.message : String(error));
-        // Continue to next plugin
+        // Silently continue - we'll try other plugins
+        // Only log if it's not a "module not found" error (expected when plugin isn't installed)
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (!errorMsg.includes("Cannot find module") && !errorMsg.includes("not found")) {
+          console.warn(`⚠️  Failed to load plugin ${pluginName}:`, errorMsg);
+        }
       }
     }
   }

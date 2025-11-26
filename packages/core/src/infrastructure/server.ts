@@ -1,3 +1,7 @@
+import type { AuthContext } from "../schemas.js";
+import type { CacheAdapter } from "./cache.js";
+import type { StorageBucket } from "./storage.js";
+
 /**
  * Normalized HTTP request interface
  */
@@ -23,7 +27,108 @@ export interface HttpResponse {
 }
 
 /**
- * Route handler function type
+ * Handler context passed to route handlers
+ * Provides a clean, single-parameter API for handlers
+ */
+export interface HandlerContext {
+  // Request data
+  method: string;
+  url: string;
+  path: string;
+  query: Record<string, unknown>;
+  params: Record<string, unknown>;
+  body: unknown;
+  headers: Record<string, string | undefined>;
+  
+  // Authentication context
+  auth?: AuthContext;
+  
+  // Response helpers
+  status(code: number): HandlerContext;
+  
+  // Framework services (for future extensibility)
+  db?: unknown; // Direct database adapter access
+  entities?: Record<string, unknown>; // Entity repositories (e.g., context.entities.Product)
+  cache?: CacheAdapter; // Cache adapter (Redis, Memcached, etc.)
+  storage?: Record<string, StorageBucket>; // Storage buckets (e.g., context.storage.images, context.storage.documents)
+  realtime?: {
+    /**
+     * Publish an event to a channel (throws on error)
+     */
+    publish(
+      channel: string,
+      event: string,
+      data: unknown,
+      options?: {
+        userId?: string; // Send only to specific user
+        excludeUserId?: string; // Send to all except this user
+      }
+    ): Promise<void>;
+    
+    /**
+     * Publish an event to a channel (fire-and-forget, logs errors but doesn't throw)
+     */
+    publishAsync(
+      channel: string,
+      event: string,
+      data: unknown,
+      options?: {
+        userId?: string;
+        excludeUserId?: string;
+      }
+    ): void;
+    
+    /**
+     * Broadcast an event to all clients in a channel
+     */
+    broadcast(
+      channel: string,
+      event: string,
+      data: unknown,
+      options?: {
+        userId?: string;
+        excludeUserId?: string;
+      }
+    ): Promise<void>;
+    
+    /**
+     * Get connected clients for a channel
+     * Returns user IDs or connection IDs
+     */
+    getClients(channel: string): Promise<string[]>;
+    
+    /**
+     * Check if realtime is available
+     */
+    readonly available: boolean;
+  };
+  logger?: {
+    info(message: string): void;
+    warn(message: string): void;
+    error(message: string): void;
+  };
+  
+  // Original request/reply for edge cases
+  _original?: {
+    request: HttpRequest;
+    reply: HttpResponse;
+  };
+  
+  // Internal: status code set by handler (used by runtime)
+  _statusCode?: number;
+  
+  [key: string]: unknown; // Allow additional properties
+}
+
+/**
+ * Handler function type for user handlers
+ * User handlers receive a single HandlerContext parameter
+ */
+export type HandlerFunction = (context: HandlerContext) => Promise<unknown> | unknown;
+
+/**
+ * Route handler function type for adapters
+ * Adapters receive request/reply and convert them to context for user handlers
  */
 export type RouteHandler = (request: HttpRequest, reply: HttpResponse) => Promise<unknown> | unknown;
 

@@ -1,4 +1,4 @@
-import type { SchemaField, SchemaDefinition, YamaSchemas } from "./schemas";
+import type { SchemaField, SchemaDefinition, YamaSchemas } from "./schemas.js";
 
 /**
  * Entity field types supported by Yama
@@ -42,6 +42,95 @@ export interface EntityIndex {
 }
 
 /**
+ * CRUD configuration for auto-generating endpoints
+ */
+export interface CrudConfig {
+  /**
+   * Enable CRUD endpoint generation for this entity
+   * Can be:
+   * - `true` - Generate all CRUD endpoints (GET, POST, PUT, PATCH, DELETE)
+   * - `false` - Don't generate CRUD endpoints
+   * - Array of methods to generate (e.g., ["GET", "POST"])
+   * - Object with method-specific config:
+   *   - Individual methods: { "GET": { auth: { required: false } } }
+   *   - Method groups: { "read": { auth: { required: false } }, "write": { auth: { required: true, roles: ["admin"] } } }
+   * 
+   * Method groups available:
+   * - `read` - GET methods
+   * - `write` or `mutate` - POST, PUT, PATCH, DELETE methods
+   * - `create` - POST method
+   * - `update` - PUT, PATCH methods
+   * - `delete` - DELETE method
+   */
+  enabled?: boolean | string[] | Record<string, { auth?: { required?: boolean; roles?: string[] }; path?: string; inputType?: string; responseType?: string }>;
+  /**
+   * Base path for CRUD endpoints (default: pluralized entity name in lowercase)
+   * e.g., "Example" -> "/examples"
+   */
+  path?: string;
+  /**
+   * Auth configuration applied to all CRUD endpoints (can be overridden per method or method group)
+   */
+  auth?: {
+    required?: boolean;
+    roles?: string[];
+    permissions?: string[];
+    handler?: string;
+  };
+  /**
+   * Custom input types per HTTP method
+   * Overrides the default generated input schemas (e.g., CreateEntityInput, UpdateEntityInput)
+   * Example: { POST: "CustomCreateInput", PATCH: "UpdateStatusInput" }
+   */
+  inputTypes?: Record<string, string>;
+  /**
+   * Custom response types per HTTP method
+   * Use GET_LIST for list endpoints, GET_ONE for single item endpoints
+   * Example: { GET_LIST: "TodoSummary", GET_ONE: "TodoDetail", POST: "Todo" }
+   */
+  responseTypes?: Record<string, string>;
+  /**
+   * Search configuration for CRUD list endpoints
+   * 
+   * Simplified syntax options:
+   * - `true` - Enable search with smart defaults (all string/text fields, contains mode)
+   * - `["field1", "field2"]` - Enable search on specific fields only
+   * - `{ fields: [...], mode: "starts", fullText: true }` - Full configuration
+   * - `false` - Explicitly disable search (if entity has searchable fields)
+   * 
+   * If not specified, search is automatically enabled if entity has string/text fields
+   */
+  search?: boolean | string[] | {
+    /**
+     * Fields that can be searched (default: all string/text fields)
+     * Can be array of field names or true to enable all searchable fields
+     */
+    fields?: string[] | true;
+    /**
+     * Search mode: "contains" (default), "starts", "ends", "exact"
+     */
+    mode?: "contains" | "starts" | "ends" | "exact";
+    /**
+     * Enable full-text search across multiple fields with a single query parameter
+     * Default: true (enabled automatically)
+     */
+    fullText?: boolean;
+  };
+  /**
+   * Pagination configuration for CRUD list endpoints
+   * 
+   * Supports all pagination types: offset, page, cursor
+   * Default: offset pagination with limit/offset query params
+   * 
+   * Examples:
+   * - `pagination: true` - Enable offset pagination (default)
+   * - `pagination: { type: "page" }` - Use page-based pagination
+   * - `pagination: { type: "cursor", cursorField: "id" }` - Use cursor pagination
+   */
+  pagination?: import("./pagination/types.js").PaginationConfig;
+}
+
+/**
  * Entity definition
  */
 export interface EntityDefinition {
@@ -49,6 +138,7 @@ export interface EntityDefinition {
   fields: Record<string, EntityField>;
   indexes?: EntityIndex[];
   apiSchema?: string; // Optional custom API schema name (default: entity name)
+  crud?: boolean | CrudConfig; // Optional CRUD endpoint generation
 }
 
 /**
