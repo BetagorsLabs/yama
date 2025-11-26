@@ -96,24 +96,30 @@ export async function addHandlerCommand(options: AddHandlerOptions): Promise<voi
       ? handlerContextTypeName 
       : "HandlerContext";
     
-    const contextImport = useTypedContext
-      ? `import type { ${handlerContextTypeName} } from "@yama/gen/handler-contexts";`
-      : `import type { HandlerContext } from "@betagors/yama-core";`;
-
-    // Determine return type from endpoint response
-    let returnType = "Promise<unknown>";
-    if (endpoint?.response?.type) {
-      returnType = `Promise<Types.${endpoint.response.type}>`;
+    // Build single import from @yama/gen (simpler than separate imports)
+    let imports: string;
+    if (useTypedContext) {
+      const importedTypes = [handlerContextTypeName];
+      if (endpoint?.response?.type) {
+        importedTypes.push(endpoint.response.type);
+      }
+      imports = `import type { ${importedTypes.join(", ")} } from "@yama/gen";`;
+    } else {
+      imports = `import type { HandlerContext } from "@betagors/yama-core";`;
     }
 
+    // Determine return type from endpoint response
+    const returnTypeName = endpoint?.response?.type || "unknown";
+    const returnType = `Promise<${returnTypeName}>`;
+
     // Create handler template
-    const handlerTemplate = `${contextImport}${useTypedContext ? '\nimport type * as Types from "@yama/gen/types";' : ''}
+    const handlerTemplate = `${imports}
 
 export async function ${handlerName}(
   context: ${contextType}
 ): ${returnType} {
   // TODO: Implement handler logic
-  ${endpoint?.response?.type ? `return {} as Types.${endpoint.response.type};` : 'return {};'}
+  ${endpoint?.response?.type ? `return {} as ${endpoint.response.type};` : 'return {};'}
 }
 `;
 

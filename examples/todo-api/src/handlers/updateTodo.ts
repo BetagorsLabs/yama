@@ -1,12 +1,12 @@
-import type { HandlerContext } from "@betagors/yama-core";
-import type { UpdateTodoInput } from "@yama/types";
+import type { UpdateTodoHandlerContext, Todo } from "@yama/gen";
 
 export async function updateTodo(
-  context: HandlerContext
-) {
-  const params = context.params as { id: string };
-  const { id } = params;
-  const updated = await (context.entities?.Todo as any).update(id, context.body as UpdateTodoInput);
+  context: UpdateTodoHandlerContext
+): Promise<Todo | { error: string; message: string }> {
+  // context.params.id is already typed as string
+  const { id } = context.params;
+  // context.body is already typed as UpdateTodoInput
+  const updated = await context.entities.Todo.update(id, context.body);
 
   if (!updated) {
     context.status(404);

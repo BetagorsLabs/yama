@@ -54,9 +54,11 @@ export function updateTypeScriptPaths(configDir: string): void {
 
     // Update Yama paths
     const yamaPaths: Record<string, string[]> = {
+      "@gen": [".yama/gen/index.ts"],
       "@gen/db": [".yama/gen/db"],
       "@gen/sdk": [".yama/gen/sdk"],
       "@gen/types": [".yama/gen/types.ts"],
+      "@yama/gen": [".yama/gen/index.ts"],
     };
 
     // Add @betagors/yama-core path if we're in a monorepo

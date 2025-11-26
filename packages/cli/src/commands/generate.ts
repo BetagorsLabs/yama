@@ -163,6 +163,19 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
       await updateFrameworkConfig(projectType, options.framework, configDir);
     }
 
+    // Generate main index.ts that exports everything
+    if (!options.sdkOnly) {
+      try {
+        await generateMainIndex(
+          configDir, 
+          config.entities, 
+          Array.isArray(config.endpoints) ? config.endpoints : undefined
+        );
+      } catch (error) {
+        console.warn("⚠️  Failed to generate main index:", error instanceof Error ? error.message : String(error));
+      }
+    }
+
     // Update TypeScript paths
     try {
       updateTypeScriptPaths(configDir);
@@ -454,6 +467,63 @@ ${entityNames.map(name => {
     const errorMsg = error instanceof Error ? error.message : String(error);
     // Don't throw - let the caller handle it gracefully
     throw new Error(`Database code generation failed: ${errorMsg}`);
+  }
+}
+
+/**
+ * Generate main index.ts file that exports all generated types
+ */
+async function generateMainIndex(
+  configDir: string,
+  entities?: YamaEntities,
+  endpoints?: unknown[]
+): Promise<void> {
+  try {
+    const genDir = join(configDir, ".yama", "gen");
+    const indexPath = join(genDir, "index.ts");
+    
+    // Check what files exist
+    const typesPath = join(genDir, "types.ts");
+    const handlerContextsPath = join(genDir, "handler-contexts.ts");
+    const dbIndexPath = join(genDir, "db", "index.ts");
+    const sdkIndexPath = join(genDir, "sdk", "index.ts");
+    
+    const exports: string[] = [];
+    
+    // Export types if they exist
+    if (existsSync(typesPath)) {
+      exports.push('export * from "./types.js";');
+    }
+    
+    // Export handler contexts if they exist
+    if (existsSync(handlerContextsPath) && endpoints && endpoints.length > 0) {
+      exports.push('export * from "./handler-contexts.js";');
+    }
+    
+    // Export database code if it exists
+    if (existsSync(dbIndexPath) && entities && Object.keys(entities).length > 0) {
+      exports.push('export * from "./db/index.js";');
+    }
+    
+    // Export SDK if it exists
+    if (existsSync(sdkIndexPath) && endpoints && endpoints.length > 0) {
+      exports.push('export * from "./sdk/index.js";');
+    }
+    
+    // Generate index content
+    const indexContent = `// This file is auto-generated from yama.yaml
+// Do not edit manually - your changes will be overwritten
+
+// Export all generated types, handlers, database code, and SDK
+${exports.length > 0 ? exports.join("\n") : "// No generated files to export"}
+`;
+
+    ensureDir(genDir);
+    writeFileSync(indexPath, indexContent, "utf-8");
+    console.log(`✅ Generated main index: .yama/gen/index.ts`);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to generate main index: ${errorMsg}`);
   }
 }
 

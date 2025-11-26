@@ -41,6 +41,12 @@
       ],
       "@betagors/yama-core": [
         "../../packages/core/src/index"
+      ],
+      "@gen": [
+        ".yama/gen/index.ts"
+      ],
+      "@yama/gen": [
+        ".yama/gen/index.ts"
       ]
     }
   },

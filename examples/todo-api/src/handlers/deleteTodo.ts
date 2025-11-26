@@ -1,11 +1,11 @@
-import type { HandlerContext } from "@betagors/yama-core";
+import type { DeleteTodoHandlerContext } from "@yama/gen";
 
 export async function deleteTodo(
-  context: HandlerContext
-) {
-  const params = context.params as { id: string };
-  const { id } = params;
-  const deleted = await (context.entities?.Todo as any).delete(id);
+  context: DeleteTodoHandlerContext
+): Promise<{ error: string; message: string } | undefined> {
+  // context.params.id is already typed as string
+  const { id } = context.params;
+  const deleted = await context.entities.Todo.delete(id);
 
   if (!deleted) {
     context.status(404);

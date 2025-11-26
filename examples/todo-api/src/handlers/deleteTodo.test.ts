@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { deleteTodo } from "./deleteTodo.ts";
-import type { HandlerContext } from "@betagors/yama-core";
+import { deleteTodo } from "./deleteTodo";
+import type { DeleteTodoHandlerContext } from "@yama/gen";
 
 describe("deleteTodo Handler", () => {
-  let mockContext: Partial<HandlerContext>;
+  let mockContext: Partial<DeleteTodoHandlerContext>;
   let mockTodoRepository: any;
 
   beforeEach(() => {
@@ -28,7 +28,7 @@ describe("deleteTodo Handler", () => {
     mockTodoRepository.delete.mockResolvedValue(true);
 
     const result = await deleteTodo(
-      mockContext as HandlerContext
+      mockContext as DeleteTodoHandlerContext
     );
 
     expect(mockTodoRepository.delete).toHaveBeenCalledWith("123");
@@ -40,7 +40,7 @@ describe("deleteTodo Handler", () => {
     mockTodoRepository.delete.mockResolvedValue(false);
 
     const result = await deleteTodo(
-      mockContext as HandlerContext
+      mockContext as DeleteTodoHandlerContext
     );
 
     expect(mockTodoRepository.delete).toHaveBeenCalledWith("123");
@@ -56,7 +56,7 @@ describe("deleteTodo Handler", () => {
     mockTodoRepository.delete.mockResolvedValue(true);
 
     await deleteTodo(
-      mockContext as HandlerContext
+      mockContext as DeleteTodoHandlerContext
     );
 
     expect(mockTodoRepository.delete).toHaveBeenCalledWith("456");
@@ -69,7 +69,7 @@ describe("deleteTodo Handler", () => {
 
     await expect(
       deleteTodo(
-        mockContext as HandlerContext
+        mockContext as DeleteTodoHandlerContext
       )
     ).rejects.toThrow("Database delete failed");
   });

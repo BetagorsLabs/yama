@@ -1,12 +1,11 @@
-import type { HandlerContext } from "@betagors/yama-core";
-import type { Todo } from "@yama/types";
+import type { GetTodoByIdHandlerContext, Todo } from "@yama/gen";
 
 export async function getTodoById(
-  context: HandlerContext
+  context: GetTodoByIdHandlerContext
 ): Promise<Todo | { error: string; message: string }> {
-  const params = context.params as { id: string };
-  const { id } = params;
-  const todo = await (context.entities?.Todo as any).findById(id);
+  // context.params.id is already typed as string
+  const { id } = context.params;
+  const todo = await context.entities.Todo.findById(id);
 
   if (!todo) {
     context.status(404);
