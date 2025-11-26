@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { join, dirname, resolve, relative } from "path";
 
 /**
  * Update TypeScript path mappings in tsconfig.json
@@ -25,12 +25,49 @@ export function updateTypeScriptPaths(configDir: string): void {
       tsconfig.compilerOptions.paths = {};
     }
 
+    // Check if we're in a monorepo (has packages/ directory)
+    let yamaCorePath: string | undefined;
+    let currentDir = configDir;
+    const startDir = currentDir;
+    
+    // Walk up to find packages/core directory (max 10 levels to avoid infinite loops)
+    for (let i = 0; i < 10; i++) {
+      const packagesPath = join(currentDir, "packages", "core");
+      if (existsSync(packagesPath)) {
+        // We're in a monorepo, calculate relative path to core package
+        const coreSrcPath = join(packagesPath, "src", "index.ts");
+        if (existsSync(coreSrcPath)) {
+          const relativePath = relative(configDir, coreSrcPath)
+            .replace(/\\/g, "/")
+            .replace(/\.ts$/, "");
+          yamaCorePath = relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
+        }
+        break;
+      }
+      const parentDir = dirname(currentDir);
+      if (parentDir === currentDir) {
+        // Reached filesystem root
+        break;
+      }
+      currentDir = parentDir;
+    }
+
     // Update Yama paths
-    tsconfig.compilerOptions.paths = {
-      ...tsconfig.compilerOptions.paths,
+    const yamaPaths: Record<string, string[]> = {
       "@gen/db": [".yama/gen/db"],
       "@gen/sdk": [".yama/gen/sdk"],
       "@gen/types": [".yama/gen/types.ts"],
+    };
+
+    // Add @betagors/yama-core path if we're in a monorepo
+    // Otherwise, it should resolve from node_modules automatically
+    if (yamaCorePath) {
+      yamaPaths["@betagors/yama-core"] = [yamaCorePath];
+    }
+
+    tsconfig.compilerOptions.paths = {
+      ...tsconfig.compilerOptions.paths,
+      ...yamaPaths,
     };
 
     // Write back

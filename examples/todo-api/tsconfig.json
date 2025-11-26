@@ -17,6 +17,30 @@
       ],
       "@betagors/yama-types": [
         ".yama/types.ts"
+      ],
+      "@yama/db": [
+        ".yama/db"
+      ],
+      "@yama/types": [
+        ".yama/types.ts"
+      ],
+      "@gen/db": [
+        ".yama/gen/db"
+      ],
+      "@gen/sdk": [
+        ".yama/gen/sdk"
+      ],
+      "@gen/types": [
+        ".yama/gen/types.ts"
+      ],
+      "@yama/gen/handler-contexts": [
+        ".yama/gen/handler-contexts.ts"
+      ],
+      "@yama/gen/types": [
+        ".yama/gen/types.ts"
+      ],
+      "@betagors/yama-core": [
+        "../../packages/core/src/index"
       ]
     }
   },

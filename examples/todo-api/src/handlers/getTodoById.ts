@@ -1,5 +1,4 @@
 import type { HandlerContext } from "@betagors/yama-core";
-import { todoRepository } from "@yama/db";
 import type { Todo } from "@yama/types";
 
 export async function getTodoById(
@@ -7,7 +6,7 @@ export async function getTodoById(
 ): Promise<Todo | { error: string; message: string }> {
   const params = context.params as { id: string };
   const { id } = params;
-  const todo = await todoRepository.findById(id);
+  const todo = await (context.entities?.Todo as any).findById(id);
 
   if (!todo) {
     context.status(404);

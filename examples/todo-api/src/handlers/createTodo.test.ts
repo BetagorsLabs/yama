@@ -1,21 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createTodo } from "./createTodo.ts";
 import type { HandlerContext } from "@betagors/yama-core";
-import type { CreateTodoInput } from "../types.ts";
-import { todoRepository } from "../generated/db/repository.ts";
-
-// Mock the repository
-vi.mock("../generated/db/repository.ts", () => ({
-  todoRepository: {
-    create: vi.fn(),
-  },
-}));
+import type { CreateTodoInput } from "@yama/types";
 
 describe("createTodo Handler", () => {
   let mockContext: Partial<HandlerContext>;
+  let mockTodoRepository: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockTodoRepository = {
+      create: vi.fn(),
+    };
 
     mockContext = {
       body: {
@@ -23,6 +20,9 @@ describe("createTodo Handler", () => {
         completed: false,
       },
       status: vi.fn().mockReturnThis(),
+      entities: {
+        Todo: mockTodoRepository,
+      },
     };
   });
 
@@ -34,13 +34,13 @@ describe("createTodo Handler", () => {
       createdAt: new Date().toISOString(),
     };
 
-    vi.mocked(todoRepository.create).mockResolvedValue(mockTodo);
+    mockTodoRepository.create.mockResolvedValue(mockTodo);
 
     const result = await createTodo(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.create).toHaveBeenCalledWith(mockContext.body);
+    expect(mockTodoRepository.create).toHaveBeenCalledWith(mockContext.body);
     expect(mockContext.status).toHaveBeenCalledWith(201);
     expect(result).toEqual(mockTodo);
   });
@@ -55,13 +55,13 @@ describe("createTodo Handler", () => {
     };
 
     mockContext.body = input;
-    vi.mocked(todoRepository.create).mockResolvedValue(mockTodo);
+    mockTodoRepository.create.mockResolvedValue(mockTodo);
 
     const result = await createTodo(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.create).toHaveBeenCalledWith(input);
+    expect(mockTodoRepository.create).toHaveBeenCalledWith(input);
     expect(result).toEqual(mockTodo);
   });
 
@@ -78,7 +78,7 @@ describe("createTodo Handler", () => {
     };
 
     mockContext.body = input;
-    vi.mocked(todoRepository.create).mockResolvedValue(mockTodo);
+    mockTodoRepository.create.mockResolvedValue(mockTodo);
 
     const result = await createTodo(
       mockContext as HandlerContext
@@ -89,7 +89,7 @@ describe("createTodo Handler", () => {
 
   it("should propagate database errors", async () => {
     const error = new Error("Database connection failed");
-    vi.mocked(todoRepository.create).mockRejectedValue(error);
+    mockTodoRepository.create.mockRejectedValue(error);
 
     await expect(
       createTodo(

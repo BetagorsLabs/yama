@@ -1,26 +1,26 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { getTodoById } from "./getTodoById.ts";
 import type { HandlerContext } from "@betagors/yama-core";
-import { todoRepository } from "../generated/db/repository.ts";
-
-// Mock the repository
-vi.mock("../generated/db/repository.ts", () => ({
-  todoRepository: {
-    findById: vi.fn(),
-  },
-}));
 
 describe("getTodoById Handler", () => {
   let mockContext: Partial<HandlerContext>;
+  let mockTodoRepository: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockTodoRepository = {
+      findById: vi.fn(),
+    };
 
     mockContext = {
       params: {
         id: "123",
       },
       status: vi.fn().mockReturnThis(),
+      entities: {
+        Todo: mockTodoRepository,
+      },
     };
   });
 
@@ -32,25 +32,25 @@ describe("getTodoById Handler", () => {
       createdAt: new Date().toISOString(),
     };
 
-    vi.mocked(todoRepository.findById).mockResolvedValue(mockTodo);
+    mockTodoRepository.findById.mockResolvedValue(mockTodo);
 
     const result = await getTodoById(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.findById).toHaveBeenCalledWith("123");
+    expect(mockTodoRepository.findById).toHaveBeenCalledWith("123");
     expect(result).toEqual(mockTodo);
     expect(mockContext.status).not.toHaveBeenCalled();
   });
 
   it("should return 404 when todo not found", async () => {
-    vi.mocked(todoRepository.findById).mockResolvedValue(null);
+    mockTodoRepository.findById.mockResolvedValue(null);
 
     const result = await getTodoById(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.findById).toHaveBeenCalledWith("123");
+    expect(mockTodoRepository.findById).toHaveBeenCalledWith("123");
     expect(result).toEqual({
       error: "Not found",
       message: 'Todo with id "123" not found',
@@ -67,19 +67,19 @@ describe("getTodoById Handler", () => {
     };
 
     mockContext.params = { id: "456" };
-    vi.mocked(todoRepository.findById).mockResolvedValue(mockTodo);
+    mockTodoRepository.findById.mockResolvedValue(mockTodo);
 
     const result = await getTodoById(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.findById).toHaveBeenCalledWith("456");
+    expect(mockTodoRepository.findById).toHaveBeenCalledWith("456");
     expect(result).toEqual(mockTodo);
   });
 
   it("should propagate database errors", async () => {
     const error = new Error("Database query failed");
-    vi.mocked(todoRepository.findById).mockRejectedValue(error);
+    mockTodoRepository.findById.mockRejectedValue(error);
 
     await expect(
       getTodoById(

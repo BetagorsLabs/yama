@@ -83,7 +83,8 @@ export {
 } from "./infrastructure/database-registry.js";
 
 // Export type generation
-export { generateTypes } from "./typegen.js";
+export { generateTypes, generateHandlerContexts } from "./typegen.js";
+export type { EndpointDefinition, HandlerContextConfig, AvailableServices } from "./typegen.js";
 
 // Export entity types and functions
 export {

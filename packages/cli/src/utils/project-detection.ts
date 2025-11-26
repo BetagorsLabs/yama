@@ -1,5 +1,5 @@
-import { existsSync } from "fs";
-import { join, dirname } from "path";
+import { existsSync, readFileSync } from "fs";
+import { join, dirname, resolve } from "path";
 
 export type ProjectType = "nextjs" | "vite" | "react" | "node" | "unknown";
 
@@ -83,5 +83,52 @@ export function findYamaConfig(startPath: string = process.cwd()): string | null
   }
   
   return null;
+}
+
+/**
+ * Detect the package manager used in the project
+ */
+export function detectPackageManager(cwd: string = process.cwd()): "pnpm" | "npm" | "yarn" {
+  // Check for packageManager field in package.json (most reliable)
+  try {
+    const pkgPath = join(cwd, "package.json");
+    if (existsSync(pkgPath)) {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+      if (pkg.packageManager) {
+        if (pkg.packageManager.startsWith("pnpm")) return "pnpm";
+        if (pkg.packageManager.startsWith("yarn")) return "yarn";
+        if (pkg.packageManager.startsWith("npm")) return "npm";
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+
+  // Check for lock files
+  if (existsSync(join(cwd, "pnpm-lock.yaml")) || existsSync(join(cwd, "pnpm-workspace.yaml"))) {
+    return "pnpm";
+  }
+  if (existsSync(join(cwd, "yarn.lock"))) {
+    return "yarn";
+  }
+  if (existsSync(join(cwd, "package-lock.json"))) {
+    return "npm";
+  }
+
+  // Check parent directories for workspace
+  let current = cwd;
+  const root = resolve(current, "..", "..", "..");
+  while (current !== root && current !== dirname(current)) {
+    if (existsSync(join(current, "pnpm-workspace.yaml"))) {
+      return "pnpm";
+    }
+    if (existsSync(join(current, "yarn.lock"))) {
+      return "yarn";
+    }
+    current = dirname(current);
+  }
+
+  // Default to npm
+  return "npm";
 }
 

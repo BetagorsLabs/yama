@@ -1,16 +1,8 @@
 name: todo-api
 version: 1.0.0
 
-database:
-  dialect: postgresql
-  url: ${DATABASE_URL}
-
-auth:
-  providers:
-    - type: jwt
-      secret: ${JWT_SECRET}
-    - type: api-key
-      header: X-API-Key
+plugins:
+  "@betagors/yama-pglite":
 
 entities:
   Todo:

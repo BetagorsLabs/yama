@@ -1,5 +1,4 @@
 import type { HandlerContext } from "@betagors/yama-core";
-import { todoRepository } from "@yama/db";
 import type { UpdateTodoInput } from "@yama/types";
 
 export async function updateTodo(
@@ -7,7 +6,7 @@ export async function updateTodo(
 ) {
   const params = context.params as { id: string };
   const { id } = params;
-  const updated = await todoRepository.update(id, context.body as UpdateTodoInput);
+  const updated = await (context.entities?.Todo as any).update(id, context.body as UpdateTodoInput);
 
   if (!updated) {
     context.status(404);

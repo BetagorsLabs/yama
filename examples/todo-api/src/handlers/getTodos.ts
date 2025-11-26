@@ -1,5 +1,4 @@
 import type { HandlerContext } from "@betagors/yama-core";
-import { todoRepository } from "@yama/db";
 import type { TodoList } from "@yama/types";
 
 export async function getTodos(
@@ -12,7 +11,7 @@ export async function getTodos(
   };
   const { completed, limit, offset = 0 } = query;
   
-  const todos = await todoRepository.findAll({
+  const todos = await (context.entities?.Todo as any).findAll({
     completed,
     limit,
     offset

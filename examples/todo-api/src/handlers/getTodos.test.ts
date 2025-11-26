@@ -1,24 +1,24 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { getTodos } from "./getTodos.ts";
 import type { HandlerContext } from "@betagors/yama-core";
-import { todoRepository } from "../generated/db/repository.ts";
-
-// Mock the repository
-vi.mock("../generated/db/repository.ts", () => ({
-  todoRepository: {
-    findAll: vi.fn(),
-  },
-}));
 
 describe("getTodos Handler", () => {
   let mockContext: Partial<HandlerContext>;
+  let mockTodoRepository: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
+    mockTodoRepository = {
+      findAll: vi.fn(),
+    };
+
     mockContext = {
       query: {},
       status: vi.fn().mockReturnThis(),
+      entities: {
+        Todo: mockTodoRepository,
+      },
     };
   });
 
@@ -38,13 +38,13 @@ describe("getTodos Handler", () => {
       },
     ];
 
-    vi.mocked(todoRepository.findAll).mockResolvedValue(mockTodos);
+    mockTodoRepository.findAll.mockResolvedValue(mockTodos);
 
     const result = await getTodos(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.findAll).toHaveBeenCalledWith({ completed: undefined, limit: undefined, offset: 0 });
+    expect(mockTodoRepository.findAll).toHaveBeenCalledWith({ completed: undefined, limit: undefined, offset: 0 });
     expect(result).toEqual({ todos: mockTodos });
   });
 
@@ -59,13 +59,13 @@ describe("getTodos Handler", () => {
     ];
 
     mockContext.query = { completed: true };
-    vi.mocked(todoRepository.findAll).mockResolvedValue(mockTodos);
+    mockTodoRepository.findAll.mockResolvedValue(mockTodos);
 
     const result = await getTodos(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.findAll).toHaveBeenCalledWith({ completed: true, limit: undefined, offset: 0 });
+    expect(mockTodoRepository.findAll).toHaveBeenCalledWith({ completed: true, limit: undefined, offset: 0 });
     expect(result.todos).toHaveLength(1);
     expect(result.todos![0].completed).toBe(true);
   });
@@ -81,13 +81,13 @@ describe("getTodos Handler", () => {
     ];
 
     mockContext.query = { completed: false };
-    vi.mocked(todoRepository.findAll).mockResolvedValue(mockTodos);
+    mockTodoRepository.findAll.mockResolvedValue(mockTodos);
 
     const result = await getTodos(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.findAll).toHaveBeenCalledWith({ completed: false, limit: undefined, offset: 0 });
+    expect(mockTodoRepository.findAll).toHaveBeenCalledWith({ completed: false, limit: undefined, offset: 0 });
     expect(result.todos![0].completed).toBe(false);
   });
 
@@ -102,26 +102,26 @@ describe("getTodos Handler", () => {
     ];
 
     mockContext.query = { limit: 10 };
-    vi.mocked(todoRepository.findAll).mockResolvedValue(mockTodos);
+    mockTodoRepository.findAll.mockResolvedValue(mockTodos);
 
     await getTodos(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.findAll).toHaveBeenCalledWith({ completed: undefined, limit: 10, offset: 0 });
+    expect(mockTodoRepository.findAll).toHaveBeenCalledWith({ completed: undefined, limit: 10, offset: 0 });
   });
 
   it("should apply offset", async () => {
     const mockTodos: any[] = [];
 
     mockContext.query = { offset: 5 };
-    vi.mocked(todoRepository.findAll).mockResolvedValue(mockTodos);
+    mockTodoRepository.findAll.mockResolvedValue(mockTodos);
 
     await getTodos(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.findAll).toHaveBeenCalledWith({ completed: undefined, limit: undefined, offset: 5 });
+    expect(mockTodoRepository.findAll).toHaveBeenCalledWith({ completed: undefined, limit: undefined, offset: 5 });
   });
 
   it("should combine query parameters", async () => {
@@ -132,13 +132,13 @@ describe("getTodos Handler", () => {
       limit: 20,
       offset: 10,
     };
-    vi.mocked(todoRepository.findAll).mockResolvedValue(mockTodos);
+    mockTodoRepository.findAll.mockResolvedValue(mockTodos);
 
     await getTodos(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.findAll).toHaveBeenCalledWith({ completed: true, limit: 20, offset: 10 });
+    expect(mockTodoRepository.findAll).toHaveBeenCalledWith({ completed: true, limit: 20, offset: 10 });
   });
 
   it("should return empty array when no todos exist", async () => {
@@ -153,7 +153,7 @@ describe("getTodos Handler", () => {
 
   it("should propagate database errors", async () => {
     const error = new Error("Database query failed");
-    vi.mocked(todoRepository.findAll).mockRejectedValue(error);
+    mockTodoRepository.findAll.mockRejectedValue(error);
 
     await expect(
       getTodos(

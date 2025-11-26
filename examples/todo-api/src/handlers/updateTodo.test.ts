@@ -1,21 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { updateTodo } from "./updateTodo.ts";
 import type { HandlerContext } from "@betagors/yama-core";
-import type { UpdateTodoInput } from "../types.ts";
-import { todoRepository } from "../generated/db/repository.ts";
-
-// Mock the repository
-vi.mock("../generated/db/repository.ts", () => ({
-  todoRepository: {
-    update: vi.fn(),
-  },
-}));
+import type { UpdateTodoInput } from "@yama/types";
 
 describe("updateTodo Handler", () => {
   let mockContext: Partial<HandlerContext>;
+  let mockTodoRepository: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockTodoRepository = {
+      update: vi.fn(),
+    };
 
     mockContext = {
       params: {
@@ -26,6 +23,9 @@ describe("updateTodo Handler", () => {
         completed: true,
       },
       status: vi.fn().mockReturnThis(),
+      entities: {
+        Todo: mockTodoRepository,
+      },
     };
   });
 
@@ -37,25 +37,25 @@ describe("updateTodo Handler", () => {
       createdAt: new Date().toISOString(),
     };
 
-    vi.mocked(todoRepository.update).mockResolvedValue(mockTodo);
+    mockTodoRepository.update.mockResolvedValue(mockTodo);
 
     const result = await updateTodo(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.update).toHaveBeenCalledWith("123", mockContext.body);
+    expect(mockTodoRepository.update).toHaveBeenCalledWith("123", mockContext.body);
     expect(result).toEqual(mockTodo);
     expect(mockContext.status).not.toHaveBeenCalled();
   });
 
   it("should return 404 when todo not found", async () => {
-    vi.mocked(todoRepository.update).mockResolvedValue(null);
+    mockTodoRepository.update.mockResolvedValue(null);
 
     const result = await updateTodo(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.update).toHaveBeenCalledWith("123", mockContext.body);
+    expect(mockTodoRepository.update).toHaveBeenCalledWith("123", mockContext.body);
     expect(result).toEqual({
       error: "Not found",
       message: 'Todo with id "123" not found',
@@ -73,13 +73,13 @@ describe("updateTodo Handler", () => {
     };
 
     mockContext.body = input;
-    vi.mocked(todoRepository.update).mockResolvedValue(mockTodo);
+    mockTodoRepository.update.mockResolvedValue(mockTodo);
 
     const result = await updateTodo(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.update).toHaveBeenCalledWith("123", input);
+    expect(mockTodoRepository.update).toHaveBeenCalledWith("123", input);
     expect(result?.title).toBe("New Title");
   });
 
@@ -93,13 +93,13 @@ describe("updateTodo Handler", () => {
     };
 
     mockContext.body = input;
-    vi.mocked(todoRepository.update).mockResolvedValue(mockTodo);
+    mockTodoRepository.update.mockResolvedValue(mockTodo);
 
     const result = await updateTodo(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.update).toHaveBeenCalledWith("123", input);
+    expect(mockTodoRepository.update).toHaveBeenCalledWith("123", input);
     expect(result?.completed).toBe(true);
   });
 
@@ -113,19 +113,19 @@ describe("updateTodo Handler", () => {
     };
 
     mockContext.body = input;
-    vi.mocked(todoRepository.update).mockResolvedValue(mockTodo);
+    mockTodoRepository.update.mockResolvedValue(mockTodo);
 
     const result = await updateTodo(
       mockContext as HandlerContext
     );
 
-    expect(todoRepository.update).toHaveBeenCalledWith("123", input);
+    expect(mockTodoRepository.update).toHaveBeenCalledWith("123", input);
     expect(result).toEqual(mockTodo);
   });
 
   it("should propagate database errors", async () => {
     const error = new Error("Database update failed");
-    vi.mocked(todoRepository.update).mockRejectedValue(error);
+    mockTodoRepository.update.mockRejectedValue(error);
 
     await expect(
       updateTodo(

@@ -67,22 +67,17 @@ export async function initCommand(options: InitOptions): Promise<void> {
   if (selectedPlugins.length > 0) {
     pluginsConfig = "\nplugins:\n";
     for (const plugin of selectedPlugins) {
-      pluginsConfig += `  ${plugin}: {}\n`;
+      // Add database config inside plugin config if it's a database plugin
+      if (plugin === "@betagors/yama-postgres") {
+        pluginsConfig += `  ${plugin}:\n    url: \${DATABASE_URL}\n`;
+      } else {
+        pluginsConfig += `  ${plugin}: {}\n`;
+      }
     }
   }
 
-  // Build database config if database plugin selected
-  let databaseConfig = "";
-  if (pluginAnswers.database === "@betagors/yama-postgres") {
-    databaseConfig = `
-database:
-  dialect: postgresql
-  url: \${DATABASE_URL}
-`;
-  }
-
   const yamlContent = `name: ${projectName}
-version: ${version}${pluginsConfig}${databaseConfig}
+version: ${version}${pluginsConfig}
 schemas:
   Example:
     fields:

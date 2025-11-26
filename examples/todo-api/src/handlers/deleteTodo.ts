@@ -1,12 +1,11 @@
 import type { HandlerContext } from "@betagors/yama-core";
-import { todoRepository } from "@yama/db";
 
 export async function deleteTodo(
   context: HandlerContext
 ) {
   const params = context.params as { id: string };
   const { id } = params;
-  const deleted = await todoRepository.delete(id);
+  const deleted = await (context.entities?.Todo as any).delete(id);
 
   if (!deleted) {
     context.status(404);
