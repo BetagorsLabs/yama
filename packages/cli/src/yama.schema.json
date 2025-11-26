@@ -246,6 +246,92 @@
       },
       "required": ["maxRequests", "windowMs"]
     },
+    "realtime": {
+      "type": "object",
+      "description": "Realtime/WebSocket configuration",
+      "properties": {
+        "entities": {
+          "type": "object",
+          "description": "Entity-based realtime event configuration",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "description": "Enable realtime events for this entity"
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["created", "updated", "deleted"]
+                },
+                "description": "Which events to emit (default: all)"
+              },
+              "watchFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Which fields trigger update events (default: all)"
+              },
+              "channelPrefix": {
+                "type": "string",
+                "description": "Custom channel prefix (default: entity name lowercase)"
+              }
+            }
+          }
+        },
+        "channels": {
+          "type": "array",
+          "description": "Custom realtime channels",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Channel name"
+              },
+              "path": {
+                "type": "string",
+                "description": "WebSocket path pattern (e.g., /notifications, /chat/:roomId)"
+              },
+              "auth": {
+                "type": "object",
+                "properties": {
+                  "required": {
+                    "type": "boolean",
+                    "description": "Require authentication"
+                  },
+                  "handler": {
+                    "type": "string",
+                    "description": "Custom auth handler function name"
+                  }
+                }
+              },
+              "params": {
+                "type": "object",
+                "description": "Path parameters definition",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "description": "Parameter type"
+                    },
+                    "required": {
+                      "type": "boolean",
+                      "description": "Parameter is required"
+                    }
+                  }
+                }
+              }
+            },
+            "required": ["name", "path"]
+          }
+        }
+      }
+    },
     "cache": {
       "type": "object",
       "description": "Cache configuration (optional - cache is configured via plugins)",

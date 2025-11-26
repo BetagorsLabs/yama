@@ -54,6 +54,26 @@ interface YamaConfig {
   auth?: AuthConfig;
   rateLimit?: RateLimitConfig;
   plugins?: Record<string, Record<string, unknown>> | string[]; // Plugin configs or list of plugin names
+  realtime?: {
+    entities?: Record<string, {
+      enabled?: boolean;
+      events?: ("created" | "updated" | "deleted")[];
+      watchFields?: string[];
+      channelPrefix?: string;
+    }>;
+    channels?: Array<{
+      name: string;
+      path: string;
+      auth?: {
+        required?: boolean;
+        handler?: string;
+      };
+      params?: Record<string, {
+        type: string;
+        required?: boolean;
+      }>;
+    }>;
+  };
   endpoints?: Array<{
     path: string;
     method: string;
@@ -372,7 +392,9 @@ function createHandlerContext(
   authContext?: { authenticated: boolean; user?: unknown; provider?: string; token?: string },
   repositories?: Record<string, unknown>,
   dbAdapter?: unknown,
-  cacheAdapter?: unknown
+  cacheAdapter?: unknown,
+  storage?: Record<string, unknown>,
+  realtimeAdapter?: unknown
 ): HandlerContext {
   let statusCode: number | undefined;
   
@@ -395,6 +417,43 @@ function createHandlerContext(
     
     // Cache access
     cache: cacheAdapter as any,
+    
+    // Storage access
+    storage: storage,
+    
+    // Realtime access
+    realtime: realtimeAdapter ? {
+      publish: async (channel: string, event: string, data: unknown, options?: { userId?: string; excludeUserId?: string }) => {
+        const adapter = realtimeAdapter as any;
+        if (adapter && typeof adapter.publish === "function") {
+          return await adapter.publish(channel, event, data, options);
+        }
+        throw new Error("Realtime adapter not available");
+      },
+      publishAsync: (channel: string, event: string, data: unknown, options?: { userId?: string; excludeUserId?: string }) => {
+        const adapter = realtimeAdapter as any;
+        if (adapter && typeof adapter.publishAsync === "function") {
+          adapter.publishAsync(channel, event, data, options);
+        }
+      },
+      broadcast: async (channel: string, event: string, data: unknown, options?: { userId?: string; excludeUserId?: string }) => {
+        const adapter = realtimeAdapter as any;
+        if (adapter && typeof adapter.broadcast === "function") {
+          return await adapter.broadcast(channel, event, data, options);
+        }
+        throw new Error("Realtime adapter not available");
+      },
+      getClients: async (channel: string) => {
+        const adapter = realtimeAdapter as any;
+        if (adapter && typeof adapter.getClients === "function") {
+          return await adapter.getClients(channel);
+        }
+        return [];
+      },
+      get available() {
+        return realtimeAdapter !== null && realtimeAdapter !== undefined;
+      },
+    } : undefined,
     
     // Status helper
     status(code: number): HandlerContext {
@@ -490,7 +549,8 @@ function registerRoutes(
   validator: ReturnType<typeof createSchemaValidator>,
   globalRateLimiter: RateLimiter | null,
   repositories?: Record<string, unknown>,
-  dbAdapter?: unknown
+  dbAdapter?: unknown,
+  storage?: Record<string, unknown>
 ) {
   if (!config.endpoints) {
     return;
@@ -665,7 +725,7 @@ function registerRoutes(
         }
 
         // Create handler context
-        const context = createHandlerContext(request, reply, authContext, repositories, dbAdapter, cacheAdapter);
+        const context = createHandlerContext(request, reply, authContext, repositories, dbAdapter, cacheAdapter, storage, realtimeAdapter);
 
         // Call handler with context
         const result = await handlerFn(context);
@@ -766,6 +826,13 @@ export async function startYamaNodeRuntime(
   
   // Cache adapter (initialized from cache plugin if available)
   let cacheAdapter: unknown = null;
+
+  // Storage buckets (initialized from storage plugins)
+  const storageBuckets: Record<string, unknown> = {};
+
+  // Realtime adapter (initialized from realtime plugin if available)
+  let realtimeAdapter: unknown = null;
+  let realtimePluginApi: any = null;
 
   // Load and parse YAML config if provided
   let config: YamaConfig | null = null;
@@ -868,6 +935,42 @@ export async function startYamaNodeRuntime(
             if (plugin.category === "cache" && pluginApi && typeof pluginApi === "object" && "adapter" in pluginApi) {
               cacheAdapter = pluginApi.adapter;
               console.log("✅ Cache adapter initialized");
+            }
+
+            // If this is a storage plugin, collect storage buckets
+            if (plugin.category === "storage" && pluginApi && typeof pluginApi === "object") {
+              if ("buckets" in pluginApi && typeof pluginApi.buckets === "object" && pluginApi.buckets !== null) {
+                // S3 plugin returns buckets object
+                Object.assign(storageBuckets, pluginApi.buckets);
+                console.log(`✅ Storage buckets initialized: ${Object.keys(pluginApi.buckets).join(", ")}`);
+              } else if ("bucket" in pluginApi) {
+                // FS plugin returns single bucket (also exposed as buckets.default)
+                storageBuckets.default = pluginApi.bucket;
+              }
+            }
+
+            // If this is a realtime plugin, store the adapter
+            if (plugin.category === "realtime" && pluginApi && typeof pluginApi === "object" && "adapter" in pluginApi) {
+              realtimeAdapter = pluginApi.adapter;
+              realtimePluginApi = pluginApi;
+              
+              // Pass Redis client if available from cache plugin
+              if (cacheAdapter && typeof (cacheAdapter as any).getRedisClient === "function") {
+                const redisClient = (cacheAdapter as any).getRedisClient();
+                if (redisClient && pluginApi.init) {
+                  // Re-initialize with Redis client
+                  const realtimeConfig = typeof config.plugins === "object" && !Array.isArray(config.plugins)
+                    ? (config.plugins[pluginName] || {}) as any
+                    : {};
+                  realtimeConfig.redisClient = redisClient;
+                  // Note: We can't re-init here, but we can pass it via the plugin API
+                  // The plugin will check for redisClient in its setup
+                }
+              }
+              
+              console.log("✅ Realtime adapter initialized");
+                console.log("✅ Storage bucket initialized (default)");
+              }
             }
           } catch (error) {
             console.warn(`⚠️  Failed to load plugin ${pluginName}:`, error instanceof Error ? error.message : String(error));
@@ -980,6 +1083,35 @@ export async function startYamaNodeRuntime(
   }
   serverAdapter = createHttpServerAdapter("fastify", config?.server?.options);
   server = serverAdapter.createServer(config?.server?.options);
+
+  // Setup realtime WebSocket server if plugin is loaded
+  if (realtimePluginApi && typeof realtimePluginApi.setupServer === "function") {
+    try {
+      await realtimePluginApi.setupServer(server, config?.auth);
+      console.log("✅ Realtime WebSocket server initialized");
+      
+      // Register channels from config
+      if (config?.realtime?.channels && realtimePluginApi.registerChannel) {
+        for (const channel of config.realtime.channels) {
+          realtimePluginApi.registerChannel(channel);
+        }
+        console.log(`✅ Registered ${config.realtime.channels.length} realtime channel(s)`);
+      }
+      
+      // Setup entity events if configured
+      if (config?.realtime?.entities && realtimePluginApi.setupEntityEvents) {
+        realtimePluginApi.setupEntityEvents(config.realtime.entities, repositories);
+        const entityCount = Object.keys(config.realtime.entities).filter(
+          (name) => config.realtime?.entities?.[name]?.enabled
+        ).length;
+        if (entityCount > 0) {
+          console.log(`✅ Enabled realtime events for ${entityCount} entity/entities`);
+        }
+      }
+    } catch (error) {
+      console.warn("⚠️  Failed to setup realtime WebSocket server:", error instanceof Error ? error.message : String(error));
+    }
+  }
 
   // Register built-in routes using adapter
   serverAdapter.registerRoute(server, "GET", "/health", async (request: HttpRequest, reply: HttpResponse) => {
@@ -1109,7 +1241,7 @@ export async function startYamaNodeRuntime(
   // Load handlers and register routes
   if (config?.endpoints && handlersDir && serverAdapter && configDir) {
     const handlers = await loadHandlers(handlersDir, configDir);
-    registerRoutes(serverAdapter, server, config, handlers, validator, globalRateLimiter, repositories, dbAdapter || null);
+    registerRoutes(serverAdapter, server, config, handlers, validator, globalRateLimiter, repositories, dbAdapter || null, storageBuckets);
   }
 
   // Call onStart lifecycle hooks for all plugins

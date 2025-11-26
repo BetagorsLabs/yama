@@ -128,6 +128,17 @@ export {
 } from "./infrastructure/cache";
 
 export {
+  type StorageAdapter,
+  type StorageBucket,
+  type StorageConfig,
+  type UploadOptions,
+  type UploadResult,
+  type StorageMetadata,
+  createStorageAdapter,
+  registerStorageAdapter,
+} from "./infrastructure/storage";
+
+export {
   type HttpServerAdapter,
   type HttpRequest,
   type HttpResponse,

@@ -1,5 +1,6 @@
 import type { AuthContext } from "../schemas";
 import type { CacheAdapter } from "./cache";
+import type { StorageBucket } from "./storage";
 
 /**
  * Normalized HTTP request interface
@@ -49,6 +50,58 @@ export interface HandlerContext {
   db?: unknown; // Direct database adapter access
   entities?: Record<string, unknown>; // Entity repositories (e.g., context.entities.Product)
   cache?: CacheAdapter; // Cache adapter (Redis, Memcached, etc.)
+  storage?: Record<string, StorageBucket>; // Storage buckets (e.g., context.storage.images, context.storage.documents)
+  realtime?: {
+    /**
+     * Publish an event to a channel (throws on error)
+     */
+    publish(
+      channel: string,
+      event: string,
+      data: unknown,
+      options?: {
+        userId?: string; // Send only to specific user
+        excludeUserId?: string; // Send to all except this user
+      }
+    ): Promise<void>;
+    
+    /**
+     * Publish an event to a channel (fire-and-forget, logs errors but doesn't throw)
+     */
+    publishAsync(
+      channel: string,
+      event: string,
+      data: unknown,
+      options?: {
+        userId?: string;
+        excludeUserId?: string;
+      }
+    ): void;
+    
+    /**
+     * Broadcast an event to all clients in a channel
+     */
+    broadcast(
+      channel: string,
+      event: string,
+      data: unknown,
+      options?: {
+        userId?: string;
+        excludeUserId?: string;
+      }
+    ): Promise<void>;
+    
+    /**
+     * Get connected clients for a channel
+     * Returns user IDs or connection IDs
+     */
+    getClients(channel: string): Promise<string[]>;
+    
+    /**
+     * Check if realtime is available
+     */
+    readonly available: boolean;
+  };
   logger?: {
     info(message: string): void;
     warn(message: string): void;

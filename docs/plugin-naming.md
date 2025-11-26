@@ -17,11 +17,12 @@ All installable packages that extend Yama functionality:
   - `@betagors/yama-postgres` - PostgreSQL database plugin
   - `@betagors/yama-pglite` - PGLite database plugin
   - `@betagors/yama-fastify` - Fastify HTTP server plugin
+  - `@betagors/yama-s3` - S3-compatible object storage plugin
+  - `@betagors/yama-fs` - Filesystem storage plugin
   - `@betagors/yama-plugin-db-mysql` - MySQL database plugin (future)
   - `@betagors/yama-plugin-http-express` - Express HTTP server plugin (future)
   - `@betagors/yama-plugin-payments-stripe` - Stripe payments plugin (future)
   - `@betagors/yama-plugin-email-sendgrid` - SendGrid email plugin (future)
-  - `@betagors/yama-plugin-storage-s3` - AWS S3 storage plugin (future)
   - `@betagors/yama-plugin-auth-clerk` - Clerk authentication plugin (future)
 
 ### Tools

@@ -48,6 +48,10 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
       entities?: YamaEntities;
       endpoints?: unknown;
       plugins?: Record<string, Record<string, unknown>> | string[];
+      realtime?: {
+        entities?: Record<string, any>;
+        channels?: Array<any>;
+      };
     };
     const configDir = getConfigDir(configPath);
     const projectType = detectProjectType(configDir);
@@ -70,6 +74,21 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
         useCache ? cacheDir : undefined,
         cacheKey || undefined
       );
+    }
+
+    // Generate realtime types
+    if (!options.sdkOnly && config.realtime) {
+      try {
+        const { generateRealtimeTypes } = await import("@betagors/yama-realtime/typegen");
+        const realtimeTypes = generateRealtimeTypes(config);
+        const realtimeTypesPath = join(configDir, ".yama", "realtime-types.ts");
+        const { mkdirSync, writeFileSync } = await import("fs");
+        mkdirSync(join(configDir, ".yama"), { recursive: true });
+        writeFileSync(realtimeTypesPath, realtimeTypes, "utf-8");
+        console.log(`✅ Generated realtime types: ${realtimeTypesPath}`);
+      } catch (error) {
+        console.warn("⚠️  Failed to generate realtime types:", error instanceof Error ? error.message : String(error));
+      }
     }
 
     // Generate database code (Drizzle schemas and mappers)
