@@ -182,7 +182,96 @@ entities:
 
 ---
 
-#### 4. Basic Query Handler Type
+#### 4. Separate Response Types for GET List vs Single Item
+**Priority: Medium | TIER 1** ✅ **IMPLEMENTED**
+
+Support for different response types for GET list endpoints vs single item endpoints.
+
+**Implementation Status:**
+- ✅ `GET_LIST` and `GET_ONE` method names supported in `responseTypes`
+- ✅ `GET` can be used as fallback for both endpoints
+- ✅ Backward compatible with existing configs
+
+**Previous State:**
+- `responseTypes.GET` applied to both `GET /{path}` (list) and `GET /{path}/:id` (single)
+- Most APIs need different response shapes for list vs detail views
+- Users had to write custom handlers to achieve this
+
+**Implementation:**
+- Add `GET_LIST` and `GET_ONE` method names to `responseTypes`:
+  ```yaml
+  crud:
+    enabled: true
+    responseTypes:
+      GET_LIST: TodoSummary    # GET /todos - returns summary array
+      GET_ONE: TodoDetail       # GET /todos/:id - returns full details
+      POST: TodoResponse
+  ```
+- Update `getResponseType` to check for `GET_LIST`/`GET_ONE` first, then fall back to `GET`
+- Maintain backward compatibility: if only `GET` is specified, use it for both endpoints
+- Update TypeScript types and schema validation
+
+**Example Use Case:**
+```yaml
+entities:
+  Todo:
+    table: todos
+    crud:
+      enabled: true
+      responseTypes:
+        GET_LIST: TodoListResponse  # { todos: TodoSummary[], total: number }
+        GET_ONE: TodoDetail          # Full todo with all fields
+    fields:
+      # ... fields ...
+
+schemas:
+  TodoListResponse:
+    fields:
+      todos:
+        type: list
+        items:
+          $ref: TodoSummary
+      total:
+        type: number
+      page:
+        type: number
+  
+  TodoSummary:
+    fields:
+      id:
+        type: string
+      title:
+        type: string
+      completed:
+        type: boolean
+  
+  TodoDetail:
+    fields:
+      id:
+        type: string
+      title:
+        type: string
+      description:
+        type: string
+      completed:
+        type: boolean
+      createdAt:
+        type: string
+        format: date-time
+      updatedAt:
+        type: string
+        format: date-time
+```
+
+**Benefits:**
+- Enables proper API design patterns (list vs detail views)
+- Reduces need for custom handlers
+- Better performance (smaller list responses)
+- More explicit configuration
+
+---
+
+#### 5. Basic Query Handler Type
 **Priority: High | TIER 1**
 
 Support built-in query handler type that can be configured directly in YAML without writing code.

@@ -28,7 +28,7 @@ const config: YamaConfig = {
       path: '/todos',
       method: 'GET',
       response: {
-        type: 'array',
+        type: 'list',
         items: 'Todo'
       }
     },

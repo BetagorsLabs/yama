@@ -3,17 +3,24 @@ import addFormats from "ajv-formats";
 
 // Type definitions for YAML schema structure
 export interface SchemaField {
-  type?: "string" | "number" | "boolean" | "integer" | "array" | "object";
+  type?: "string" | "number" | "boolean" | "integer" | "array" | "list" | "object";
   required?: boolean;
   default?: unknown;
   format?: string;
-  items?: SchemaField; // For array types
+  items?: SchemaField; // For array/list types
   properties?: Record<string, SchemaField>; // For object types
   min?: number;
   max?: number;
   pattern?: string;
   enum?: unknown[];
   $ref?: string; // Reference to another schema name
+}
+
+/**
+ * Normalize type: convert "list" to "array" for internal processing
+ */
+function normalizeType(type: string | undefined): string | undefined {
+  return type === "list" ? "array" : type;
 }
 
 export interface SchemaDefinition {
@@ -63,8 +70,9 @@ export function fieldToJsonSchema(
     throw new Error(`Field "${fieldName}" must have either a type or $ref`);
   }
 
+  const normalizedType = normalizeType(field.type);
   const schema: Record<string, unknown> = {
-    type: field.type === "integer" ? "integer" : field.type
+    type: normalizedType === "integer" ? "integer" : normalizedType
   };
 
   // Add format if specified
@@ -90,8 +98,8 @@ export function fieldToJsonSchema(
     schema.maximum = field.max;
   }
 
-  // Handle array types
-  if (field.type === "array" && field.items) {
+  // Handle array/list types
+  if ((field.type === "array" || field.type === "list") && field.items) {
     schema.items = fieldToJsonSchema(field.items, "item", schemas, visited);
   }
 

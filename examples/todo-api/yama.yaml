@@ -7,6 +7,15 @@ plugins:
 entities:
   Todo:
     table: todos
+    # Example: Using CRUD with custom input and response types
+    # crud:
+    #   enabled: true
+    #   inputTypes:
+    #     PATCH: UpdateStatusInput
+    #   responseTypes:
+    #     GET_LIST: TodoSummary
+    #     GET_ONE: TodoDetail
+    #     POST: Todo
     fields:
       id:
         type: uuid
@@ -42,9 +51,42 @@ schemas:
   TodoList:
     fields:
       todos:
-        type: array
+        type: list
         items:
           $ref: Todo
+
+  # Example custom schemas for CRUD operations
+  # UpdateStatusInput:
+  #   fields:
+  #     completed:
+  #       type: boolean
+  #       required: true
+  #
+  # TodoSummary:
+  #   fields:
+  #     id:
+  #       type: string
+  #     title:
+  #       type: string
+  #     completed:
+  #       type: boolean
+  #
+  # TodoDetail:
+  #   fields:
+  #     id:
+  #       type: string
+  #     title:
+  #       type: string
+  #     description:
+  #       type: string
+  #     completed:
+  #       type: boolean
+  #     createdAt:
+  #       type: string
+  #       format: date-time
+  #     updatedAt:
+  #       type: string
+  #       format: date-time
 
 endpoints:
   - path: /todos

@@ -62,7 +62,7 @@ export interface CrudConfig {
    * - `update` - PUT, PATCH methods
    * - `delete` - DELETE method
    */
-  enabled?: boolean | string[] | Record<string, { auth?: { required?: boolean; roles?: string[] }; path?: string }>;
+  enabled?: boolean | string[] | Record<string, { auth?: { required?: boolean; roles?: string[] }; path?: string; inputType?: string; responseType?: string }>;
   /**
    * Base path for CRUD endpoints (default: pluralized entity name in lowercase)
    * e.g., "Example" -> "/examples"
@@ -75,6 +75,18 @@ export interface CrudConfig {
     required?: boolean;
     roles?: string[];
   };
+  /**
+   * Custom input types per HTTP method
+   * Overrides the default generated input schemas (e.g., CreateEntityInput, UpdateEntityInput)
+   * Example: { POST: "CustomCreateInput", PATCH: "UpdateStatusInput" }
+   */
+  inputTypes?: Record<string, string>;
+  /**
+   * Custom response types per HTTP method
+   * Use GET_LIST for list endpoints, GET_ONE for single item endpoints
+   * Example: { GET_LIST: "TodoSummary", GET_ONE: "TodoDetail", POST: "Todo" }
+   */
+  responseTypes?: Record<string, string>;
 }
 
 /**

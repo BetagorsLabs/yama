@@ -167,7 +167,7 @@ endpoints:
     method: GET
     handler: listTodos
     response:
-      type: array
+      type: list
       items: Todo
 ```
 

@@ -103,6 +103,7 @@ function fieldToTypeScript(
       return "boolean";
     
     case "array":
+    case "list":
       if (field.items) {
         const itemType = fieldToTypeScript(field.items, indent, schemas, visited);
         return `${itemType}[]`;

@@ -511,6 +511,14 @@
                             "path": {
                               "type": "string",
                               "description": "Custom path override for this method"
+                            },
+                            "inputType": {
+                              "type": "string",
+                              "description": "Custom input schema name for this method (overrides default Create/Update input schemas)"
+                            },
+                            "responseType": {
+                              "type": "string",
+                              "description": "Custom response schema name for this method (overrides default entity schema)"
                             }
                           }
                         },
@@ -536,6 +544,22 @@
                         }
                       }
                     }
+                  },
+                  "inputTypes": {
+                    "type": "object",
+                    "description": "Custom input types per HTTP method. Overrides default generated input schemas (e.g., CreateEntityInput, UpdateEntityInput). Example: { 'POST': 'CustomCreateInput', 'PATCH': 'UpdateStatusInput' }",
+                    "additionalProperties": {
+                      "type": "string",
+                      "description": "Schema name for input type"
+                    }
+                  },
+                  "responseTypes": {
+                    "type": "object",
+                    "description": "Custom response types per HTTP method. Use GET_LIST for list endpoints, GET_ONE for single item endpoints. Example: { 'GET_LIST': 'TodoSummary', 'GET_ONE': 'TodoDetail', 'POST': 'Todo' }",
+                    "additionalProperties": {
+                      "type": "string",
+                      "description": "Schema name for response type"
+                    }
                   }
                 }
               }
@@ -560,7 +584,7 @@
               "properties": {
                 "type": {
                   "type": "string",
-                  "enum": ["string", "number", "boolean", "integer", "array", "object"],
+                  "enum": ["string", "number", "boolean", "integer", "array", "list", "object"],
                   "description": "Field type"
                 },
                 "required": {
@@ -722,7 +746,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["string", "number", "boolean", "integer", "array", "object"]
+          "enum": ["string", "number", "boolean", "integer", "array", "list", "object"]
         },
         "required": {
           "type": "boolean"

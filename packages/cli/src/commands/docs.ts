@@ -305,7 +305,7 @@ function generateMarkdown(spec: OpenAPISpec): string {
           let type = "unknown";
           if (propSchema.$ref) {
             type = propSchema.$ref.split("/").pop() as string;
-          } else if (propSchema.type === "array" && propSchema.items) {
+          } else if ((propSchema.type === "array" || propSchema.type === "list") && propSchema.items) {
             const itemType = (propSchema.items as { $ref?: string; type?: string }).$ref
               ? (propSchema.items as { $ref: string }).$ref.split("/").pop()
               : (propSchema.items as { type?: string }).type || "unknown";

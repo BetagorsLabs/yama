@@ -95,7 +95,7 @@ export async function addSchemaCommand(options: AddSchemaOptions): Promise<void>
             "number",
             "integer",
             "boolean",
-            "array",
+            "list",
             "object",
             "Reference to another schema",
           ],
@@ -119,14 +119,14 @@ export async function addSchemaCommand(options: AddSchemaOptions): Promise<void>
             "object",
             "Reference to another schema",
           ],
-          when: (answers) => answers.type === "array",
+          when: (answers) => answers.type === "array" || answers.type === "list",
         },
         {
           type: "list",
           name: "arrayItemRef",
           message: "Reference which schema?",
           choices: existingSchemas,
-          when: (answers) => answers.type === "array" && answers.arrayItemType === "Reference to another schema",
+          when: (answers) => (answers.type === "array" || answers.type === "list") && answers.arrayItemType === "Reference to another schema",
         },
         {
           type: "confirm",
@@ -161,8 +161,8 @@ export async function addSchemaCommand(options: AddSchemaOptions): Promise<void>
 
       if (fieldInfo.type === "Reference to another schema") {
         field.$ref = fieldInfo.refSchema;
-      } else if (fieldInfo.type === "array") {
-        field.type = "array";
+      } else if (fieldInfo.type === "array" || fieldInfo.type === "list") {
+        field.type = "list";
         if (fieldInfo.arrayItemType === "Reference to another schema") {
           field.items = { $ref: fieldInfo.arrayItemRef };
         } else {

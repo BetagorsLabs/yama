@@ -38,7 +38,7 @@ const config: YamaConfig = {
       method: 'GET',
       description: 'List all todos',
       response: {
-        type: 'array',
+        type: 'list',
         items: 'Todo'
       }
     },

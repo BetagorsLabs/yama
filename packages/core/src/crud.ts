@@ -148,7 +148,7 @@ function methodBelongsToGroup(method: string, group: string): boolean {
 function getMethodConfig(
   method: string,
   crudConfig: CrudConfig | boolean
-): { auth?: { required?: boolean; roles?: string[] }; path?: string } | undefined {
+): { auth?: { required?: boolean; roles?: string[] }; path?: string; inputType?: string; responseType?: string } | undefined {
   if (typeof crudConfig === "boolean") {
     return undefined;
   }
@@ -168,6 +168,73 @@ function getMethodConfig(
   }
 
   return undefined;
+}
+
+/**
+ * Get custom input type for a method from CRUD config
+ * Checks method-specific config first, then top-level inputTypes
+ */
+function getInputType(
+  method: string,
+  crudConfig: CrudConfig | boolean,
+  defaultType: string
+): string {
+  if (typeof crudConfig === "boolean") {
+    return defaultType;
+  }
+
+  // Check method-specific config first
+  const methodConfig = getMethodConfig(method, crudConfig);
+  if (methodConfig?.inputType) {
+    return methodConfig.inputType;
+  }
+
+  // Check top-level inputTypes
+  if (crudConfig.inputTypes && method in crudConfig.inputTypes) {
+    return crudConfig.inputTypes[method];
+  }
+
+  return defaultType;
+}
+
+/**
+ * Get custom response type for a method from CRUD config
+ */
+function getResponseType(
+  method: string,
+  crudConfig: CrudConfig | boolean,
+  defaultType: string,
+  endpointType?: "list" | "one"
+): string {
+  if (typeof crudConfig === "boolean") {
+    return defaultType;
+  }
+
+  // For GET endpoints, use GET_LIST or GET_ONE
+  if (method === "GET" && endpointType) {
+    const specificMethod = endpointType === "list" ? "GET_LIST" : "GET_ONE";
+    
+    const methodConfig = getMethodConfig(specificMethod, crudConfig);
+    if (methodConfig?.responseType) {
+      return methodConfig.responseType;
+    }
+    
+    if (crudConfig.responseTypes?.[specificMethod]) {
+      return crudConfig.responseTypes[specificMethod];
+    }
+  }
+
+  // For other methods, check method-specific config then top-level
+  const methodConfig = getMethodConfig(method, crudConfig);
+  if (methodConfig?.responseType) {
+    return methodConfig.responseType;
+  }
+
+  if (crudConfig.responseTypes?.[method]) {
+    return crudConfig.responseTypes[method];
+  }
+
+  return defaultType;
 }
 
 /**
@@ -203,6 +270,7 @@ export function generateCrudEndpoints(
   // GET /{path} - List all
   if (shouldGenerateMethod("GET", crudConfig)) {
     const methodConfig = getMethodConfig("GET", crudConfig);
+    const responseType = getResponseType("GET", crudConfig, arraySchemaName, "list");
     endpoints.push({
       path: basePath,
       method: "GET",
@@ -212,7 +280,7 @@ export function generateCrudEndpoints(
         offset: { type: "number", required: false },
       },
       response: {
-        type: arraySchemaName,
+        type: responseType,
       },
       auth: methodConfig?.auth || defaultAuth,
     });
@@ -221,6 +289,7 @@ export function generateCrudEndpoints(
   // GET /{path}/:id - Get by ID
   if (shouldGenerateMethod("GET", crudConfig)) {
     const methodConfig = getMethodConfig("GET", crudConfig);
+    const responseType = getResponseType("GET", crudConfig, schemaName, "one");
     endpoints.push({
       path: `${basePath}/:${primaryKey}`,
       method: "GET",
@@ -229,7 +298,7 @@ export function generateCrudEndpoints(
         [primaryKey]: { type: "string", required: true },
       },
       response: {
-        type: schemaName,
+        type: responseType,
       },
       auth: methodConfig?.auth || defaultAuth,
     });
@@ -238,15 +307,17 @@ export function generateCrudEndpoints(
   // POST /{path} - Create
   if (shouldGenerateMethod("POST", crudConfig)) {
     const methodConfig = getMethodConfig("POST", crudConfig);
+    const inputType = getInputType("POST", crudConfig, createInputName);
+    const responseType = getResponseType("POST", crudConfig, schemaName);
     endpoints.push({
       path: basePath,
       method: "POST",
       description: `Create a new ${schemaName}`,
       body: {
-        type: createInputName,
+        type: inputType,
       },
       response: {
-        type: schemaName,
+        type: responseType,
       },
       auth: methodConfig?.auth || defaultAuth,
     });
@@ -255,6 +326,8 @@ export function generateCrudEndpoints(
   // PUT /{path}/:id - Update (full)
   if (shouldGenerateMethod("PUT", crudConfig)) {
     const methodConfig = getMethodConfig("PUT", crudConfig);
+    const inputType = getInputType("PUT", crudConfig, updateInputName);
+    const responseType = getResponseType("PUT", crudConfig, schemaName);
     endpoints.push({
       path: `${basePath}/:${primaryKey}`,
       method: "PUT",
@@ -263,10 +336,10 @@ export function generateCrudEndpoints(
         [primaryKey]: { type: "string", required: true },
       },
       body: {
-        type: updateInputName,
+        type: inputType,
       },
       response: {
-        type: schemaName,
+        type: responseType,
       },
       auth: methodConfig?.auth || defaultAuth,
     });
@@ -275,6 +348,8 @@ export function generateCrudEndpoints(
   // PATCH /{path}/:id - Update (partial)
   if (shouldGenerateMethod("PATCH", crudConfig)) {
     const methodConfig = getMethodConfig("PATCH", crudConfig);
+    const inputType = getInputType("PATCH", crudConfig, updateInputName);
+    const responseType = getResponseType("PATCH", crudConfig, schemaName);
     endpoints.push({
       path: `${basePath}/:${primaryKey}`,
       method: "PATCH",
@@ -283,10 +358,10 @@ export function generateCrudEndpoints(
         [primaryKey]: { type: "string", required: true },
       },
       body: {
-        type: updateInputName,
+        type: inputType,
       },
       response: {
-        type: schemaName,
+        type: responseType,
       },
       auth: methodConfig?.auth || defaultAuth,
     });
@@ -295,6 +370,7 @@ export function generateCrudEndpoints(
   // DELETE /{path}/:id - Delete
   if (shouldGenerateMethod("DELETE", crudConfig)) {
     const methodConfig = getMethodConfig("DELETE", crudConfig);
+    const responseType = getResponseType("DELETE", crudConfig, "object");
     endpoints.push({
       path: `${basePath}/:${primaryKey}`,
       method: "DELETE",
@@ -303,7 +379,7 @@ export function generateCrudEndpoints(
         [primaryKey]: { type: "string", required: true },
       },
       response: {
-        type: "object", // Simple success response
+        type: responseType,
       },
       auth: methodConfig?.auth || defaultAuth,
     });
@@ -412,7 +488,7 @@ export function generateArraySchema(
     [arraySchemaName]: {
       fields: {
         items: {
-          type: "array",
+          type: "list",
           required: true,
           items: {
             $ref: schemaName,
