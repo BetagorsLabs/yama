@@ -10,7 +10,7 @@ const inputSchema = z.object({
 
 export const yamaAddHandlerTool = {
   name: "yama_add_handler",
-  description: "Create a new handler file for an endpoint",
+  description: "Creates a new handler function file for an endpoint. Use this tool when the user asks to create a handler, add a handler, create handler file, or when they need to implement the business logic for an endpoint. This generates a TypeScript handler file with the specified name that can be used to process requests for an endpoint.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

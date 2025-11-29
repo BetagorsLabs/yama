@@ -8,7 +8,7 @@ const inputSchema = z.object({
 
 export const yamaAddEndpointTool = {
   name: "yama_add_endpoint",
-  description: "Add a new endpoint to yama.yaml configuration (interactive - will prompt for endpoint details)",
+  description: "Adds a new API endpoint to the yama.yaml configuration file. Use this tool when the user asks to add an endpoint, create an endpoint, add a route, create a new API endpoint, or define a new HTTP endpoint. This tool will interactively prompt for endpoint details like method (GET, POST, etc.), path, handler, and other configuration options.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

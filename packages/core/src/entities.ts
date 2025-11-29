@@ -24,6 +24,7 @@ export interface EntityField {
   nullable?: boolean;
   default?: unknown; // Default value or function name (e.g., "now()")
   index?: boolean; // Create index on this field
+  unique?: boolean; // Unique constraint
   
   // API schema mapping
   api?: string | false; // API field name or false to exclude
@@ -37,6 +38,16 @@ export interface EntityField {
   max?: number;
   pattern?: string;
   enum?: unknown[];
+  
+  // Inline relation marker (when field is an entity reference)
+  _isInlineRelation?: boolean;
+  _inlineRelation?: {
+    entity: string;
+    relationType: "belongsTo" | "hasMany" | "hasOne" | "manyToMany";
+    cascade?: boolean;
+    through?: string;
+    timestamps?: boolean;
+  };
 }
 
 /**
@@ -59,6 +70,7 @@ export type RelationDefinition = string | {
   through?: string; // For manyToMany (junction table)
   localKey?: string; // For manyToMany
   foreignKeyTarget?: string; // For manyToMany
+  onDelete?: "cascade" | "setNull" | "restrict" | "noAction"; // For belongsTo/hasMany
 };
 
 /**
@@ -246,11 +258,14 @@ export interface ServerConfig {
 
 /**
  * Parse shorthand field syntax (e.g., "string!", "string?", "enum[user, admin]")
+ * Also supports inline relations (e.g., "User!", "Post[]", "Tag[] through:post_tags")
+ * and inline constraints (e.g., "string! unique", "string! indexed")
  * Optimized parser - assumes shorthand syntax by default
  */
 export function parseFieldDefinition(
   fieldName: string,
-  fieldDef: EntityFieldDefinition
+  fieldDef: EntityFieldDefinition,
+  availableEntities?: Set<string>
 ): EntityField {
   // Fast path: already parsed
   if (typeof fieldDef !== "string") {
@@ -271,10 +286,47 @@ export function parseFieldDefinition(
     return field;
   }
 
+  // Check for inline constraints and relation config
+  const parts = str.split(/\s+/);
+  let baseTypeStr = parts[0];
+  const constraints: string[] = [];
+  const relationConfig: Record<string, string | boolean> = {};
+
+  // Parse constraints and config from remaining parts
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i];
+    if (part === "unique") {
+      constraints.push("unique");
+    } else if (part === "indexed" || part === "index") {
+      constraints.push("indexed");
+    } else if (part === "cascade") {
+      relationConfig.cascade = true;
+    } else if (part.startsWith("through:")) {
+      relationConfig.through = part.substring(8);
+    } else if (part === "timestamps:true" || part === "timestamps") {
+      relationConfig.timestamps = true;
+    }
+  }
+
+  // Apply constraints
+  if (constraints.includes("unique")) {
+    field.unique = true;
+  }
+  if (constraints.includes("indexed")) {
+    field.index = true;
+  }
+
   // Parse type with modifiers: type! (required), type? (nullable)
-  let typeStr = str;
+  let typeStr = baseTypeStr;
   let required = false;
   let nullable = false;
+  let isArray = false;
+
+  // Check for array syntax: Entity[]
+  if (typeStr.endsWith("[]")) {
+    isArray = true;
+    typeStr = typeStr.slice(0, -2);
+  }
 
   if (typeStr.endsWith("!")) {
     required = true;
@@ -284,6 +336,40 @@ export function parseFieldDefinition(
     required = false;
     nullable = true;
     typeStr = typeStr.slice(0, -1);
+  }
+
+  // Check if this is an entity reference (capitalized name)
+  // Entity names typically start with uppercase letter
+  const isEntityReference = /^[A-Z][a-zA-Z0-9]*$/.test(typeStr) && 
+    (availableEntities?.has(typeStr) ?? true); // If we have entity list, check it; otherwise assume it's an entity
+
+  if (isEntityReference) {
+    // This is an inline relation
+    field._isInlineRelation = true;
+    
+    // Determine relation type based on syntax
+    let relationType: "belongsTo" | "hasMany" | "hasOne" | "manyToMany";
+    if (isArray) {
+      // Could be hasMany or manyToMany - default to manyToMany if through is specified, otherwise hasMany
+      relationType = relationConfig.through ? "manyToMany" : "hasMany";
+    } else if (nullable && !required) {
+      // Single nullable entity reference - likely hasOne
+      relationType = "hasOne";
+    } else {
+      // Single required entity reference - belongsTo
+      relationType = "belongsTo";
+    }
+
+    field._inlineRelation = {
+      entity: typeStr,
+      relationType,
+      ...(relationConfig.cascade && { cascade: true }),
+      ...(relationConfig.through && { through: relationConfig.through as string }),
+      ...(relationConfig.timestamps && { timestamps: true }),
+    };
+
+    // Return early - this is a relation, not a field
+    return field;
   }
 
   // Parse default value: type = value
@@ -357,10 +443,12 @@ export function parseRelationDefinition(
 /**
  * Normalize entity definition - optimized parser for shorthand-first syntax
  * Parses fields and relations on-demand, caching results
+ * Extracts inline relations from fields and auto-generates foreign keys
  */
 export function normalizeEntityDefinition(
   entityName: string,
-  entityDef: EntityDefinition
+  entityDef: EntityDefinition,
+  allEntities?: YamaEntities
 ): Omit<EntityDefinition, "fields" | "relations"> & {
   fields: Record<string, EntityField>;
   relations?: Record<string, ReturnType<typeof parseRelationDefinition>>;
@@ -381,22 +469,83 @@ export function normalizeEntityDefinition(
     fields: {},
   };
 
-  // Parse fields - optimized loop
+  // Build set of available entity names for validation
+  const availableEntities = allEntities 
+    ? new Set(Object.keys(allEntities))
+    : undefined;
+
+  // Parse fields and extract inline relations
   const fieldEntries = Object.entries(entityDef.fields);
+  const inlineRelations: Record<string, ReturnType<typeof parseRelationDefinition>> = {};
+  
   for (let i = 0; i < fieldEntries.length; i++) {
     const [fieldName, fieldDef] = fieldEntries[i];
-    normalized.fields[fieldName] = parseFieldDefinition(fieldName, fieldDef);
+    const parsedField = parseFieldDefinition(fieldName, fieldDef, availableEntities);
+    
+    // Check if this is an inline relation
+    if (parsedField._isInlineRelation && parsedField._inlineRelation) {
+      const inlineRel = parsedField._inlineRelation;
+      
+      // Convert inline relation to normalized relation format
+      const normalizedRelation: ReturnType<typeof parseRelationDefinition> = {
+        type: inlineRel.relationType,
+        entity: inlineRel.entity,
+      };
+
+      // Add relation-specific config
+      if (inlineRel.through) {
+        normalizedRelation.through = inlineRel.through;
+      }
+      if (inlineRel.cascade && inlineRel.relationType === "belongsTo") {
+        // For belongsTo, cascade means onDelete: cascade
+        normalizedRelation.onDelete = "cascade";
+      }
+
+      // Auto-generate foreign key for belongsTo relations
+      if (inlineRel.relationType === "belongsTo") {
+        const foreignKeyName = `${fieldName}Id`;
+        
+        // Only auto-generate if foreign key doesn't already exist
+        if (!entityDef.fields[foreignKeyName]) {
+          normalized.fields[foreignKeyName] = {
+            type: "uuid",
+            required: !parsedField.nullable,
+            nullable: parsedField.nullable,
+            index: true, // Auto-index foreign keys
+          };
+          normalizedRelation.foreignKey = foreignKeyName;
+        } else {
+          // Foreign key exists, use it
+          const fkField = parseFieldDefinition(foreignKeyName, entityDef.fields[foreignKeyName], availableEntities);
+          normalized.fields[foreignKeyName] = fkField;
+          normalizedRelation.foreignKey = foreignKeyName;
+        }
+      }
+
+      // Store inline relation
+      inlineRelations[fieldName] = normalizedRelation;
+    } else {
+      // Regular field
+      normalized.fields[fieldName] = parsedField;
+    }
   }
 
-  // Parse relations if present - only if needed
+  // Parse explicit relations if present
+  const explicitRelations: Record<string, ReturnType<typeof parseRelationDefinition>> = {};
   if (entityDef.relations) {
     const relationEntries = Object.entries(entityDef.relations);
-    const normalizedRelations: Record<string, ReturnType<typeof parseRelationDefinition>> = {};
     for (let i = 0; i < relationEntries.length; i++) {
       const [relationName, relationDef] = relationEntries[i];
-      normalizedRelations[relationName] = parseRelationDefinition(relationDef);
+      explicitRelations[relationName] = parseRelationDefinition(relationDef);
     }
-    normalized.relations = normalizedRelations;
+  }
+
+  // Merge relations: explicit takes precedence over inline
+  if (Object.keys(inlineRelations).length > 0 || Object.keys(explicitRelations).length > 0) {
+    normalized.relations = {
+      ...inlineRelations,
+      ...explicitRelations, // Explicit relations override inline ones
+    };
   }
 
   return normalized;
@@ -509,7 +658,7 @@ export function entityToSchema(
   entities?: YamaEntities
 ): SchemaDefinition {
   // Normalize once - all fields become EntityField objects
-  const normalized = normalizeEntityDefinition(entityName, entityDef);
+  const normalized = normalizeEntityDefinition(entityName, entityDef, entities);
   const schemaFields: Record<string, SchemaField> = {};
   const fieldEntries = Object.entries(normalized.fields);
 

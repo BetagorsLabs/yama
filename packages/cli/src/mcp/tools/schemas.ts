@@ -12,7 +12,7 @@ const inputSchema = z.object({
 
 export const yamaSchemasTool = {
   name: "yama_schemas",
-  description: "List all schemas defined in yama.yaml",
+  description: "Lists all data schemas defined in the yama.yaml configuration file. Use this tool when the user asks to see schemas, list schemas, view data models, show data structures, or when you need to understand the data models and types defined in the YAMA project. This displays all schema definitions with their fields, types, and validation rules.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const configPath = args.config || findYamaConfig() || "yama.yaml";

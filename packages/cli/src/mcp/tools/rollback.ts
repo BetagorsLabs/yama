@@ -11,7 +11,7 @@ const inputSchema = z.object({
 
 export const yamaRollbackTool = {
   name: "yama_rollback",
-  description: "Rollback schema migrations to a previous snapshot",
+  description: "Rolls back schema migrations to a previous snapshot or migration. Use this tool when the user asks to rollback, undo migrations, revert schema changes, rollback database, or when they need to revert database changes to a previous state. Supports emergency rollback mode for critical situations.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

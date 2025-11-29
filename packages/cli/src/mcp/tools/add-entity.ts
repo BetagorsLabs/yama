@@ -8,7 +8,7 @@ const inputSchema = z.object({
 
 export const yamaAddEntityTool = {
   name: "yama_add_entity",
-  description: "Add a new entity to yama.yaml configuration (interactive - will prompt for entity details)",
+  description: "Adds a new database entity to the yama.yaml configuration file. Use this tool when the user asks to add an entity, create an entity, define a database table, add a data model, or create a new database entity. This tool will interactively prompt for entity details like name, fields, relationships, and database-specific options.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

@@ -18,10 +18,10 @@ export interface EndpointDefinition {
     type?: string;
     required?: boolean;
   }>;
-  body?: {
+  body?: string | {
     type?: string;
   };
-  response?: {
+  response?: string | {
     type?: string;
   };
   auth?: {

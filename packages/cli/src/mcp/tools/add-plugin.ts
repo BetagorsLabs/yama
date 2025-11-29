@@ -10,7 +10,7 @@ const inputSchema = z.object({
 
 export const yamaAddPluginTool = {
   name: "yama_add_plugin",
-  description: "Add a plugin to yama.yaml and optionally install it",
+  description: "Adds a plugin to the yama.yaml configuration and optionally installs the npm package. Use this tool when the user asks to add a plugin, install a plugin, enable a plugin, add plugin support, or when they want to extend YAMA functionality with a plugin like database adapters, authentication, or other features.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

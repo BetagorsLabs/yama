@@ -11,7 +11,7 @@ const inputSchema = z.object({
 
 export const yamaMigrationCreateTool = {
   name: "yama_migration_create",
-  description: "Create a new migration file",
+  description: "Creates a new database migration file. Use this tool when the user asks to create a migration, add a migration, create migration file, or when they need to manually create a database migration for schema changes, data migrations, or custom database operations. Supports different migration types (schema, data, custom) and templates.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

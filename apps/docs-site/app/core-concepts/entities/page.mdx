@@ -71,6 +71,24 @@ entities:
 - `enum[val1, val2]` - Enum type with values
 - `type = value` - Default value (e.g., `boolean = false`, `integer = 0`)
 
+### Inline Constraints
+
+You can add constraints directly in field definitions:
+
+```yaml
+entities:
+  User:
+    table: users
+    fields:
+      email: string! unique          # Unique constraint
+      slug: string! unique indexed   # Multiple constraints
+      name: string! indexed          # Index for faster queries
+```
+
+Supported inline constraints:
+- `unique` - Unique constraint (database-level)
+- `indexed` or `index` - Create index on this field
+
 ### Full Object Syntax
 
 For advanced configuration, use the full object syntax:
@@ -153,7 +171,49 @@ entities:
 
 ## Relations
 
-Define relationships between entities using the dedicated `relations` section:
+YAMA supports two ways to define relationships: **inline relations** (recommended for simplicity) and **explicit relations** (for advanced control).
+
+### Inline Relations (Recommended)
+
+Define relations directly in the `fields:` section using entity references. Foreign keys are automatically generated:
+
+```yaml
+entities:
+  Post:
+    table: posts
+    fields:
+      id: uuid!
+      title: string!
+      # Inline relation - auto-generates authorId: uuid!
+      author: User! cascade         # belongsTo with cascade delete
+      comments: Comment[]           # hasMany
+      tags: Tag[] through:post_tags # manyToMany with junction table
+
+  Comment:
+    table: comments
+    fields:
+      id: uuid!
+      content: text!
+      # Inline relations - auto-generate foreign keys
+      post: Post! cascade          # belongsTo - auto-generates postId
+      user: User!                  # belongsTo - auto-generates userId
+```
+
+**Inline Relation Syntax:**
+- `Entity!` - belongsTo relationship (required, auto-generates `entityId` foreign key)
+- `Entity?` - hasOne relationship (nullable)
+- `Entity[]` - hasMany or manyToMany relationship
+  - If `through:table` is specified → manyToMany
+  - Otherwise → hasMany
+
+**Inline Relation Modifiers:**
+- `cascade` - Cascade delete (for belongsTo: `onDelete: cascade`)
+- `through:table_name` - Junction table for manyToMany (e.g., `tags: Tag[] through:post_tags`)
+- `timestamps:true` - Add timestamps to junction table (for manyToMany)
+
+### Explicit Relations (Advanced)
+
+For more control, use the dedicated `relations:` section:
 
 ```yaml
 entities:
@@ -173,30 +233,11 @@ entities:
       id: uuid!
       title: string!
       content: text!
-      authorId: uuid!                 # Foreign key
+      authorId: uuid!                 # Foreign key (manual)
     relations:
       author: belongsTo(User)         # Many-to-one
       comments: hasMany(Comment)       # One-to-many
       tags: manyToMany(Tag)           # Many-to-many
-
-  Comment:
-    table: comments
-    fields:
-      id: uuid!
-      content: text!
-      postId: uuid!
-      userId: uuid!
-    relations:
-      post: belongsTo(Post)
-      user: belongsTo(User)
-
-  Tag:
-    table: tags
-    fields:
-      id: uuid!
-      name: string!
-    relations:
-      posts: manyToMany(Post)
 ```
 
 ### Relation Types
@@ -206,9 +247,31 @@ entities:
 - `hasOne(Entity)` - One-to-one relationship
 - `manyToMany(Entity)` - Many-to-many relationship
 
+### Progressive Enhancement
+
+You can mix inline and explicit relations. Explicit relations take precedence:
+
+```yaml
+entities:
+  Post:
+    table: posts
+    fields:
+      # Simple inline relations
+      author: User!                  # Auto-generates authorId
+      tags: Tag[] through:post_tags  # Auto-generates junction table
+      
+    # Drop down to explicit for advanced control
+    relations:
+      author:
+        type: belongsTo
+        entity: User
+        foreignKey: customAuthorId   # Custom foreign key name
+        onDelete: setNull             # Custom delete behavior
+```
+
 ### Advanced Relation Configuration
 
-For more control, use the full object syntax:
+For full control, use the object syntax:
 
 ```yaml
 entities:
@@ -218,6 +281,7 @@ entities:
         type: belongsTo
         entity: User
         foreignKey: authorId
+        onDelete: cascade
       tags:
         type: manyToMany
         entity: Tag
@@ -228,21 +292,23 @@ entities:
 
 ## Validations
 
-Define field validations declaratively in a separate `validations` section:
+Define field validations declaratively. You can use inline constraints for simple cases or the `validations:` section for complex rules:
 
 ```yaml
 entities:
   User:
     table: users
     fields:
-      email: string!
-      name: string!
+      email: string! unique          # Inline: unique constraint
+      name: string!                   # Use validations section for complex rules
       avatarUrl: string?
     validations:
-      email: [email, unique]                    # Email format + unique constraint
-      name: [minLength(2), maxLength(100)]      # Length validation
-      avatarUrl: [url]                          # URL format validation
+      email: [email]                  # Email format (unique already in field)
+      name: [minLength(2), maxLength(100)]  # Length validation
+      avatarUrl: [url]                # URL format validation
 ```
+
+**Note:** The `unique` constraint can be specified inline (`string! unique`) or in validations (`validations: { email: [unique] }`). Both work the same way.
 
 ### Validation Rules
 

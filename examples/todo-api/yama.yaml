@@ -5,27 +5,25 @@ project:
   name: blog-api
   version: 1.0.0
 
-# Entities with new clean syntax
+# Entities with optimized inline syntax
 entities:
   User:
     table: users
     fields:
-      id: uuid!                      # ! = required
-      email: string!                  # Required string
-      name: string!
-      avatarUrl: string?              # ? = nullable
-      role: enum[user, admin]         # Enum shorthand
-      createdAt: timestamp            # Auto-populated
-    
-    # Relationships (dedicated section)
-    relations:
-      posts: hasMany(Post)
-      profile: hasOne(Profile)
-      comments: hasMany(Comment)
+      id: uuid!
+      email: string! unique          # Inline constraint: unique
+      name: string! indexed          # Inline constraint: indexed
+      avatarUrl: string?             # ? = nullable
+      role: enum[user, admin]
+      createdAt: timestamp
+      # Inline relations - auto-generates foreign keys
+      posts: Post[]                  # hasMany - auto-generates nothing
+      profile: Profile?              # hasOne - nullable
+      comments: Comment[]            # hasMany
     
     # Validations (declarative)
     validations:
-      email: [email, unique]
+      email: [email]                 # unique is already in field definition
       name: [minLength(2), maxLength(100)]
     
     # Computed fields
@@ -46,16 +44,14 @@ entities:
     table: posts
     fields:
       id: uuid!
-      title: string!
+      title: string! indexed         # Inline constraint: indexed
       content: text!
-      published: boolean = false      # Default value
+      published: boolean = false
       publishedAt: timestamp?
-      authorId: uuid!
-    
-    relations:
-      author: belongsTo(User)
-      comments: hasMany(Comment)
-      tags: manyToMany(Tag)
+      # Inline relation - auto-generates authorId: uuid!
+      author: User! cascade         # belongsTo with cascade delete
+      comments: Comment[]           # hasMany
+      tags: Tag[] through:post_tags # manyToMany with junction table
     
     validations:
       title: [minLength(5), maxLength(200)]
@@ -63,7 +59,7 @@ entities:
     
     # Indexes (auto-generated, but customizable)
     indexes:
-      - [authorId, publishedAt]      # Composite index
+      - [authorId, publishedAt]      # Composite index (authorId auto-generated)
       - published                    # Single field index
     
     # Soft deletes
@@ -77,12 +73,9 @@ entities:
     fields:
       id: uuid!
       content: text!
-      postId: uuid!
-      userId: uuid!
-    
-    relations:
-      post: belongsTo(Post)
-      user: belongsTo(User)
+      # Inline relations - auto-generate foreign keys
+      post: Post! cascade            # belongsTo - auto-generates postId
+      user: User!                    # belongsTo - auto-generates userId
     
     crud:
       enabled: true
@@ -91,15 +84,9 @@ entities:
     table: tags
     fields:
       id: uuid!
-      name: string!
-      slug: string!
-    
-    validations:
-      name: [unique]
-      slug: [unique, slug]
-    
-    relations:
-      posts: manyToMany(Post)
+      name: string! unique          # Inline constraint: unique
+      slug: string! unique indexed   # Multiple inline constraints
+      posts: Post[]                  # manyToMany (no through specified = hasMany relation)
     
     crud:
       enabled: true
@@ -108,12 +95,10 @@ entities:
     table: profiles
     fields:
       id: uuid!
-      userId: uuid!
+      # Inline relation - auto-generates userId
+      user: User!                    # belongsTo - auto-generates userId
       bio: text?
       website: string?
-    
-    relations:
-      user: belongsTo(User)
 
 # Endpoints (custom API routes)
 endpoints:

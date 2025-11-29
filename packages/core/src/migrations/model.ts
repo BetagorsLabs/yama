@@ -133,7 +133,7 @@ export function entitiesToModel(entities: YamaEntities): Model {
     const columns = new Map<string, ColumnModel>();
     
     // Normalize once per entity
-    const normalized = normalizeEntityDefinition(entityName, entityDef);
+    const normalized = normalizeEntityDefinition(entityName, entityDef, entities);
     const fieldEntries = Object.entries(normalized.fields);
     
     // Process fields efficiently

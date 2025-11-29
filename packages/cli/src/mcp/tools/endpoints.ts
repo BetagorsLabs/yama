@@ -7,7 +7,7 @@ const inputSchema = z.object({
 
 export const yamaEndpointsTool = {
   name: "yama_endpoints",
-  description: "List all endpoints defined in yama.yaml (uses yama://endpoints resource)",
+  description: "Lists all API endpoints defined in the yama.yaml configuration file. Use this tool when the user asks to see endpoints, list endpoints, view routes, show API endpoints, or when you need to understand what endpoints are available in the YAMA project. This shows all HTTP endpoints with their methods, paths, handlers, and configurations.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     try {

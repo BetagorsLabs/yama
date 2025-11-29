@@ -4,13 +4,27 @@
   "description": "Schema for Yama YAML configuration files",
   "type": "object",
   "properties": {
+    "project": {
+      "type": "object",
+      "description": "Project metadata (new syntax). Alternative to top-level name/version.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Project name"
+        },
+        "version": {
+          "type": "string",
+          "description": "Project version (e.g., '1.0.0')"
+        }
+      }
+    },
     "name": {
       "type": "string",
-      "description": "Project name"
+      "description": "Project name (legacy syntax, use 'project.name' for new syntax)"
     },
     "version": {
       "type": "string",
-      "description": "Project version (e.g., '1.0.0')"
+      "description": "Project version (e.g., '1.0.0') (legacy syntax, use 'project.version' for new syntax)"
     },
     "plugins": {
       "description": "Plugin configurations. Can be a map of plugin names to their configs, or an array of plugin names.",
@@ -423,12 +437,12 @@
           },
           "fields": {
             "type": "object",
-            "description": "Entity fields. Supports shorthand syntax (e.g., 'string!', 'string?', 'enum[user, admin]') or full object syntax.",
+            "description": "Entity fields. Supports shorthand syntax (e.g., 'string!', 'string?', 'enum[user, admin]') or full object syntax. Also supports inline relations (e.g., 'author: User!', 'posts: Post[]', 'tags: Tag[] through:post_tags') and inline constraints (e.g., 'email: string! unique', 'slug: string! unique indexed').",
             "additionalProperties": {
               "oneOf": [
                 {
                   "type": "string",
-                  "description": "Shorthand syntax: 'type!' (required), 'type?' (nullable), 'enum[val1, val2]', 'type = default'"
+                  "description": "Shorthand syntax: 'type!' (required), 'type?' (nullable), 'enum[val1, val2]', 'type = default'. Also supports inline relations: 'Entity!' (belongsTo), 'Entity?' (hasOne), 'Entity[]' (hasMany/manyToMany), with optional modifiers: 'unique', 'indexed', 'cascade', 'through:table', 'timestamps:true'"
                 },
                 {
                   "type": "object",
@@ -516,7 +530,7 @@
           },
           "relations": {
             "type": "object",
-            "description": "Entity relationships. Supports shorthand syntax (e.g., 'hasMany(Post)', 'belongsTo(User)') or full object syntax.",
+            "description": "Entity relationships. Supports shorthand syntax (e.g., 'hasMany(Post)', 'belongsTo(User)') or full object syntax. Note: Relations can also be defined inline in the 'fields:' section using entity references (e.g., 'author: User!', 'posts: Post[]'). Explicit relations in this section take precedence over inline relations.",
             "additionalProperties": {
               "oneOf": [
                 {
@@ -551,6 +565,11 @@
                     "foreignKeyTarget": {
                       "type": "string",
                       "description": "Foreign key target field (for manyToMany)"
+                    },
+                    "onDelete": {
+                      "type": "string",
+                      "enum": ["cascade", "setNull", "restrict", "noAction"],
+                      "description": "On delete behavior for belongsTo/hasMany relations"
                     }
                   },
                   "required": ["type", "entity"]
@@ -661,26 +680,44 @@
           },
           "indexes": {
             "type": "array",
-            "description": "Database indexes",
+            "description": "Database indexes. Supports shorthand syntax (array of field names or single field name) or full object syntax.",
             "items": {
-              "type": "object",
-              "properties": {
-                "fields": {
+              "oneOf": [
+                {
                   "type": "array",
+                  "description": "Composite index as array of field names (e.g., [authorId, publishedAt])",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "minItems": 1
                 },
-                "name": {
+                {
                   "type": "string",
-                  "description": "Index name"
+                  "description": "Single field index (e.g., 'published')"
                 },
-                "unique": {
-                  "type": "boolean",
-                  "description": "Unique index"
+                {
+                  "type": "object",
+                  "description": "Full index definition with options",
+                  "properties": {
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Field names for the index"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Index name"
+                    },
+                    "unique": {
+                      "type": "boolean",
+                      "description": "Unique index"
+                    }
+                  },
+                  "required": ["fields"]
                 }
-              },
-              "required": ["fields"]
+              ]
             }
           },
           "apiSchema": {
@@ -1048,24 +1085,134 @@
             }
           },
           "body": {
-            "type": "object",
-            "properties": {
-              "type": {
+            "oneOf": [
+              {
                 "type": "string",
-                "description": "Schema name for request body"
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?$",
+                "description": "Shorthand: Schema name as string (e.g., 'Post', 'Post[]')"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?$",
+                        "description": "Schema name reference (e.g., 'Post', 'Post[]')"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["object", "array", "string", "number", "boolean", "integer"]
+                      }
+                    ]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/definitions/schemaField"
+                    }
+                  },
+                  "items": {
+                    "$ref": "#/definitions/schemaField"
+                  },
+                  "required": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "format": {
+                    "type": "string"
+                  },
+                  "nullable": {
+                    "type": "boolean"
+                  },
+                  "default": {
+                    "description": "Default value"
+                  },
+                  "min": {
+                    "type": "number"
+                  },
+                  "max": {
+                    "type": "number"
+                  },
+                  "pattern": {
+                    "type": "string"
+                  },
+                  "enum": {
+                    "type": "array"
+                  }
+                },
+                "description": "Request body schema. Can be a schema reference (type: 'Post') or full schema definition (type: 'object' with properties)."
               }
-            },
-            "required": ["type"]
+            ],
+            "description": "Request body schema. Can be a string (shorthand), schema reference object, or full schema definition."
           },
           "response": {
-            "type": "object",
-            "properties": {
-              "type": {
+            "oneOf": [
+              {
                 "type": "string",
-                "description": "Schema name for response"
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?$",
+                "description": "Shorthand: Schema name as string (e.g., 'Post', 'Post[]')"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?$",
+                        "description": "Schema name reference (e.g., 'Post', 'Post[]')"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["object", "array", "string", "number", "boolean", "integer"]
+                      }
+                    ]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/definitions/schemaField"
+                    }
+                  },
+                  "items": {
+                    "$ref": "#/definitions/schemaField"
+                  },
+                  "required": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "format": {
+                    "type": "string"
+                  },
+                  "nullable": {
+                    "type": "boolean"
+                  },
+                  "default": {
+                    "description": "Default value"
+                  },
+                  "min": {
+                    "type": "number"
+                  },
+                  "max": {
+                    "type": "number"
+                  },
+                  "pattern": {
+                    "type": "string"
+                  },
+                  "enum": {
+                    "type": "array"
+                  }
+                },
+                "description": "Response schema. Can be a schema reference (type: 'Post') or full schema definition (type: 'object' with properties)."
               }
-            },
-            "required": ["type"]
+            ],
+            "description": "Response schema. Can be a string (shorthand), schema reference object, or full schema definition."
           },
           "auth": {
             "type": "object",

@@ -11,7 +11,7 @@ const inputSchema = z.object({
 
 export const yamaSchemaGenerateTool = {
   name: "yama_migration_generate",
-  description: "Generate migration from entity changes in yama.yaml",
+  description: "Generates database migrations automatically from entity changes in yama.yaml. Use this tool when the user asks to generate migrations, create migrations from entities, auto-generate migrations, or when they've modified entities in yama.yaml and need to create corresponding database migration files. This analyzes entity changes and creates appropriate migration files.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

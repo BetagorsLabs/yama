@@ -200,12 +200,10 @@ ${yamlContent}`;
   // Create example handler
   const exampleHandlerPath = join(handlersDir, "getExamples.ts");
   if (!existsSync(exampleHandlerPath)) {
-    const handlerContent = `import type { HttpRequest, HttpResponse } from "@betagors/yama-core";
-import type { Example } from "@gen/types";
+    const handlerContent = `import type { GetExamplesHandlerContext, Example } from "@yama/gen";
 
 export async function getExamples(
-  request: HttpRequest,
-  reply: HttpResponse
+  context: GetExamplesHandlerContext
 ): Promise<Example> {
   return {
     id: "1",

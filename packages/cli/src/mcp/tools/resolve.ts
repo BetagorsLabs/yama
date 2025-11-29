@@ -11,7 +11,7 @@ const inputSchema = z.object({
 
 export const yamaResolveTool = {
   name: "yama_resolve",
-  description: "Resolve schema conflicts by merging migration schemas",
+  description: "Resolves schema conflicts by merging migration schemas when there are conflicting changes between local and remote branches. Use this tool when the user asks to resolve conflicts, merge schema changes, fix migration conflicts, or when there are merge conflicts in database migrations that need to be resolved.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

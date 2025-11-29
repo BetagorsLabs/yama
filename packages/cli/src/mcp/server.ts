@@ -11,6 +11,7 @@ import { findYamaConfig } from "../utils/project-detection.ts";
 import { getConfigDir, readYamaConfig } from "../utils/file-utils.ts";
 import { resolveEnvVars, loadEnvFile, setPluginRegistryConfig, loadPlugin, getAllMCPTools } from "@betagors/yama-core";
 import type { PluginMCPTool } from "@betagors/yama-core";
+import { zodToJsonSchema } from "zod-to-json-schema";
 
 // Import tools
 import { yamaValidateTool } from "./tools/validate.ts";
@@ -34,12 +35,19 @@ import { yamaRemovePluginTool } from "./tools/remove-plugin.ts";
 import { yamaResolveTool } from "./tools/resolve.ts";
 import { yamaSchemaApplyTool } from "./tools/schema-apply.ts";
 import { yamaSchemaCheckTool } from "./tools/schema-check.ts";
+import { yamaPluginRecommendTool } from "./tools/plugin-recommend.ts";
+import { yamaPluginSelectTool } from "./tools/plugin-select.ts";
+import { yamaPluginConfigureTool } from "./tools/plugin-configure.ts";
+import { yamaSchemaValidateTool } from "./tools/schema-validate.ts";
+import { yamaSchemaGenerateTool } from "./tools/schema-generate-from-description.ts";
 
 // Import resources
 import { getConfigResource } from "./resources/config.ts";
 import { getEndpointsResource } from "./resources/endpoints.ts";
 import { getSchemasResource } from "./resources/schemas.ts";
 import { getMigrationStatusResource } from "./resources/migration-status.ts";
+import { getSchemaSyntaxResource } from "./resources/schema-syntax.ts";
+import { getSchemaExamplesResource } from "./resources/schema-examples.ts";
 
 // Core tools (always available)
 const coreTools = [
@@ -64,6 +72,11 @@ const coreTools = [
   yamaResolveTool,
   yamaSchemaApplyTool,
   yamaSchemaCheckTool,
+  yamaPluginRecommendTool,
+  yamaPluginSelectTool,
+  yamaPluginConfigureTool,
+  yamaSchemaValidateTool,
+  yamaSchemaGenerateTool,
 ];
 
 /**
@@ -146,6 +159,18 @@ const resources = [
     description: "Get current migration status",
     mimeType: "application/json",
   },
+  {
+    uri: "schema://docs/syntax",
+    name: "YAML Schema Syntax Documentation",
+    description: "Complete syntax reference for entity schemas",
+    mimeType: "text/markdown",
+  },
+  {
+    uri: "schema://docs/examples",
+    name: "Schema Examples",
+    description: "Common schema patterns and examples",
+    mimeType: "text/markdown",
+  },
 ];
 
 export async function createMCPServer(): Promise<Server> {
@@ -168,13 +193,46 @@ export async function createMCPServer(): Promise<Server> {
   // Combine core tools and plugin tools
   const allTools = [...coreTools, ...pluginTools];
 
+  /**
+   * Convert Zod schema to JSON Schema for MCP
+   */
+  function convertInputSchemaToJsonSchema(schema: any): any {
+    // If it's already a JSON Schema (has type property and no parse method), return as-is
+    if (schema && typeof schema === "object" && !schema.parse && (schema.type || schema.properties)) {
+      return schema;
+    }
+    
+    // If it's a Zod schema (has parse method), convert it
+    if (schema && typeof schema.parse === "function") {
+      try {
+        return zodToJsonSchema(schema, {
+          target: "openApi3",
+          $refStrategy: "none",
+        });
+      } catch (error) {
+        console.warn(`Failed to convert Zod schema to JSON Schema: ${error instanceof Error ? error.message : String(error)}`);
+        // Fallback to a basic schema
+        return {
+          type: "object",
+          properties: {},
+        };
+      }
+    }
+    
+    // Fallback for unknown schema types
+    return {
+      type: "object",
+      properties: {},
+    };
+  }
+
   // Register tools
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
       tools: allTools.map((tool) => ({
         name: tool.name,
         description: tool.description,
-        inputSchema: tool.inputSchema,
+        inputSchema: convertInputSchemaToJsonSchema(tool.inputSchema),
       })),
     };
   });
@@ -227,6 +285,10 @@ export async function createMCPServer(): Promise<Server> {
           return await getSchemasResource(uri);
         case "yama://migration-status":
           return await getMigrationStatusResource(uri);
+        case "schema://docs/syntax":
+          return await getSchemaSyntaxResource(uri);
+        case "schema://docs/examples":
+          return await getSchemaExamplesResource(uri);
         default:
           throw new Error(`Resource not found: ${uri}`);
       }

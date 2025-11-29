@@ -10,7 +10,7 @@ const inputSchema = z.object({
 
 export const yamaRemovePluginTool = {
   name: "yama_remove_plugin",
-  description: "Remove a plugin from yama.yaml and optionally uninstall the package",
+  description: "Removes a plugin from the yama.yaml configuration and optionally uninstalls the npm package. Use this tool when the user asks to remove a plugin, uninstall a plugin, disable a plugin, or when they want to remove plugin functionality from their YAMA project.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

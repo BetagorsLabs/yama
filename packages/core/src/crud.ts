@@ -53,8 +53,8 @@ function entityNameToPath(entityName: string, customPath?: string): string {
 /**
  * Get primary key field name - optimized with early return
  */
-function getPrimaryKeyField(entityDef: EntityDefinition, entityName: string): string {
-  const normalized = normalizeEntityDefinition(entityName, entityDef);
+function getPrimaryKeyField(entityDef: EntityDefinition, entityName: string, entities?: YamaEntities): string {
+  const normalized = normalizeEntityDefinition(entityName, entityDef, entities);
   const fieldEntries = Object.entries(normalized.fields);
   
   // Early return on first primary key found
@@ -85,8 +85,8 @@ function generateArraySchemaName(entityName: string): string {
 /**
  * Get all searchable fields - optimized with pre-allocated array
  */
-function getAllSearchableFields(entityDef: EntityDefinition, entityName: string): string[] {
-  const normalized = normalizeEntityDefinition(entityName, entityDef);
+function getAllSearchableFields(entityDef: EntityDefinition, entityName: string, entities?: YamaEntities): string[] {
+  const normalized = normalizeEntityDefinition(entityName, entityDef, entities);
   const searchable: string[] = [];
   const fieldEntries = Object.entries(normalized.fields);
   
@@ -378,7 +378,7 @@ export function generateCrudEndpoints(
     typeof crudConfig === "object" ? crudConfig.path : undefined
   );
   const schemaName = entityDef.apiSchema || entityName;
-  const primaryKey = getPrimaryKeyField(entityDef, entityName);
+  const primaryKey = getPrimaryKeyField(entityDef, entityName, entities);
   const createInputName = generateInputSchemaName(schemaName, "Create");
   const updateInputName = generateInputSchemaName(schemaName, "Update");
   const arraySchemaName = generateArraySchemaName(schemaName);
@@ -572,7 +572,7 @@ export function generateCrudInputSchemas(
   const baseSchema = entityToSchema(entityName, entityDef);
   
   // Normalize entity definition to handle shorthand syntax
-  const normalized = normalizeEntityDefinition(entityName, entityDef);
+  const normalized = normalizeEntityDefinition(entityName, entityDef, undefined);
 
   // Create input: exclude primary key and generated fields
   // Use the base schema fields directly (they already have correct API field names)

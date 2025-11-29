@@ -10,7 +10,7 @@ const inputSchema = z.object({
 
 export const yamaSchemaStatusTool = {
   name: "yama_migration_status",
-  description: "Check migration status - see which migrations are applied and pending",
+  description: "Checks the status of database migrations to see which migrations have been applied and which are pending. Use this tool when the user asks to check migration status, see migration status, list migrations, check which migrations are applied, or when you need to understand the current state of database migrations in the project.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

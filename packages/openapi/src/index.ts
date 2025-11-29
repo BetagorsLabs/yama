@@ -22,10 +22,10 @@ export interface EndpointDefinition {
     type?: string;
     required?: boolean;
   }>;
-  body?: {
+  body?: string | {
     type?: string;
   };
-  response?: {
+  response?: string | {
     type?: string;
   };
   auth?: {
@@ -222,8 +222,8 @@ function endpointToOpenAPIOperation(
   }
 
   // Request body
-  if (endpoint.body?.type) {
-    const bodyType = endpoint.body.type;
+  const bodyType = typeof endpoint.body === "string" ? endpoint.body : endpoint.body?.type;
+  if (bodyType) {
     let schema: Record<string, unknown>;
 
     if (schemas && schemas[bodyType]) {
@@ -253,8 +253,8 @@ function endpointToOpenAPIOperation(
     };
   }> = {};
 
-  if (endpoint.response?.type) {
-    const responseType = endpoint.response.type;
+  const responseType = typeof endpoint.response === "string" ? endpoint.response : endpoint.response?.type;
+  if (responseType) {
     let schema: Record<string, unknown>;
 
     if (schemas && schemas[responseType]) {

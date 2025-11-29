@@ -9,7 +9,7 @@ const inputSchema = z.object({
 
 export const yamaInitTool = {
   name: "yama_init",
-  description: "Initialize a new Yama project (interactive - will prompt for database plugin)",
+  description: "Initializes a new YAMA project in the current directory. Use this tool when the user asks to initialize a project, init YAMA, set up YAMA, or when they want to create a yama.yaml configuration file in an existing project. This will interactively prompt for project details and database plugin selection.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

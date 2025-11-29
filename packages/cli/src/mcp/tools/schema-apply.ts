@@ -12,7 +12,7 @@ const inputSchema = z.object({
 
 export const yamaSchemaApplyTool = {
   name: "yama_schema_apply",
-  description: "Apply schema changes to the database",
+  description: "Applies schema changes and migrations to the database. Use this tool when the user asks to apply migrations, run migrations, apply schema changes, update database schema, or when they need to execute pending migrations against the database. Supports preview mode, interactive confirmation, and can allow or prevent destructive operations.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

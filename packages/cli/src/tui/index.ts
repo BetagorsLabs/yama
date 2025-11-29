@@ -16,4 +16,5 @@ export { DbInspectCommandTUI, runDbInspectTUI } from './DbInspectCommand';
 export { SchemaHistoryCommandTUI, runSchemaHistoryTUI } from './SchemaHistoryCommand';
 export { SnapshotListCommandTUI, runSnapshotListTUI } from './SnapshotListCommand';
 export { PluginValidateCommandTUI, runPluginValidateTUI } from './PluginValidateCommand';
+export { CreateCommandTUI, runCreateTUI } from './CreateCommand';
 export * from './components';

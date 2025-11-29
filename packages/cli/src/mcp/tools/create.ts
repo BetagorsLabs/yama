@@ -10,7 +10,7 @@ const inputSchema = z.object({
 
 export const yamaCreateTool = {
   name: "yama_create",
-  description: "Create a new Yama project",
+  description: "Creates a new YAMA project from scratch. Use this tool when the user asks to create a new project, start a new YAMA project, initialize a new project, or set up a new YAMA application. This will create the project structure, configuration files, and optionally set up database integration. This tool does NOT require an existing yama.yaml file - it creates a new project from scratch. Works in any directory, even empty ones.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

@@ -11,7 +11,7 @@ const inputSchema = z.object({
 
 export const yamaSchemaCheckTool = {
   name: "yama_schema_check",
-  description: "Check if the database schema is in sync with yama.yaml",
+  description: "Checks if the database schema is in sync with the yama.yaml configuration. Use this tool when the user asks to check schema sync, verify schema, check if database matches config, validate schema consistency, or when you need to ensure the database schema matches the defined entities in yama.yaml. Useful for CI/CD pipelines and validation.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

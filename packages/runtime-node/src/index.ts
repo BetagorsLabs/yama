@@ -158,11 +158,11 @@ interface YamaConfig {
     }; // Optional - if not provided, uses default handler
     description?: string;
     params?: Record<string, SchemaField>;
-    body?: {
+    body?: string | {
       type: string;
     };
     query?: Record<string, SchemaField>;
-    response?: {
+    response?: string | {
       type: string;
     };
     auth?: EndpointAuth;

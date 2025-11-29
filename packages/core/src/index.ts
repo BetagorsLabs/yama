@@ -213,6 +213,8 @@ export {
   type Logger,
   PluginContextImpl,
   setPluginRegistryConfig,
+  getAllCLICommands,
+  getAllMCPTools,
   type DependencyResolution,
   resolvePluginDependencies,
   validateDependencies,

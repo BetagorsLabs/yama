@@ -8,7 +8,7 @@ const inputSchema = z.object({
 
 export const yamaAddSchemaTool = {
   name: "yama_add_schema",
-  description: "Add a new schema to yama.yaml configuration (interactive - will prompt for schema details)",
+  description: "Adds a new data schema to the yama.yaml configuration file. Use this tool when the user asks to add a schema, create a schema, define a data model, add a data type, or create a new schema definition. This tool will interactively prompt for schema details like name, fields, types, and validation rules.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

@@ -3,17 +3,19 @@ import addFormats from "ajv-formats";
 
 // Type definitions for YAML schema structure
 export interface SchemaField {
-  type?: "string" | "number" | "boolean" | "integer" | "array" | "list" | "object";
+  // Type can be a primitive type or a schema name (e.g., "User", "User[]")
+  type?: "string" | "number" | "boolean" | "integer" | "array" | "list" | "object" | string;
   required?: boolean;
   default?: unknown;
   format?: string;
-  items?: SchemaField; // For array/list types
+  items?: SchemaField; // For array/list types (legacy, prefer type: "SchemaName[]")
   properties?: Record<string, SchemaField>; // For object types
   min?: number;
   max?: number;
   pattern?: string;
   enum?: unknown[];
-  $ref?: string; // Reference to another schema name
+  /** @deprecated Use direct type references like type: "User" or type: "User[]" instead */
+  $ref?: string; // Reference to another schema name (deprecated)
 }
 
 /**
@@ -39,6 +41,22 @@ export interface ValidationResult {
 }
 
 /**
+ * Check if a type string is a schema reference (e.g., "User", "User[]")
+ */
+function isSchemaReference(type: string, schemas?: YamaSchemas): boolean {
+  if (!schemas) return false;
+  
+  // Check for array syntax like "User[]"
+  const arrayMatch = type.match(/^(.+)\[\]$/);
+  if (arrayMatch) {
+    return schemas[arrayMatch[1]] !== undefined;
+  }
+  
+  // Check for direct schema reference
+  return schemas[type] !== undefined;
+}
+
+/**
  * Convert Yama schema field to JSON Schema property
  */
 export function fieldToJsonSchema(
@@ -47,7 +65,7 @@ export function fieldToJsonSchema(
   schemas?: YamaSchemas,
   visited: Set<string> = new Set()
 ): Record<string, unknown> {
-  // Handle schema references
+  // Handle legacy $ref (deprecated but still supported)
   if (field.$ref) {
     if (visited.has(field.$ref)) {
       throw new Error(`Circular reference detected: ${field.$ref}`);
@@ -65,12 +83,59 @@ export function fieldToJsonSchema(
     return schema;
   }
 
-  // Type is required if $ref is not present
+  // Type is required
   if (!field.type) {
-    throw new Error(`Field "${fieldName}" must have either a type or $ref`);
+    throw new Error(`Field "${fieldName}" must have a type`);
   }
 
-  const normalizedType = normalizeType(field.type);
+  const typeStr = String(field.type);
+  
+  // Define primitive types that should NOT be treated as schema references
+  const primitiveTypes = ["string", "number", "boolean", "integer", "array", "list", "object"];
+  const isPrimitive = primitiveTypes.includes(typeStr);
+  
+  // Handle array syntax like "User[]" - this is the preferred way
+  const arrayMatch = typeStr.match(/^(.+)\[\]$/);
+  if (arrayMatch) {
+    const baseType = arrayMatch[1];
+    // Check if baseType is a primitive (shouldn't happen, but be safe)
+    if (primitiveTypes.includes(baseType)) {
+      // This is invalid - can't have "string[]" as a type, should use items instead
+      throw new Error(`Invalid array type "${typeStr}". Use type: "array" with items instead.`);
+    }
+    
+    if (!schemas || !schemas[baseType]) {
+      throw new Error(`Schema reference "${baseType}" not found (in array type "${typeStr}")`);
+    }
+    
+    if (visited.has(baseType)) {
+      throw new Error(`Circular reference detected: ${baseType}`);
+    }
+    
+    // Return JSON Schema array with $ref
+    return {
+      type: "array",
+      items: {
+        $ref: `#/definitions/${baseType}`
+      }
+    };
+  }
+  
+  // Handle direct schema reference (e.g., type: "User")
+  // Only if it's NOT a primitive type and it exists in schemas
+  if (!isPrimitive && schemas && schemas[typeStr]) {
+    if (visited.has(typeStr)) {
+      throw new Error(`Circular reference detected: ${typeStr}`);
+    }
+    
+    // Return JSON Schema $ref format
+    return {
+      $ref: `#/definitions/${typeStr}`
+    };
+  }
+
+  // Handle primitive types
+  const normalizedType = normalizeType(typeStr);
   const schema: Record<string, unknown> = {
     type: normalizedType === "integer" ? "integer" : normalizedType
   };
@@ -98,13 +163,13 @@ export function fieldToJsonSchema(
     schema.maximum = field.max;
   }
 
-  // Handle array/list types
-  if ((field.type === "array" || field.type === "list") && field.items) {
+  // Handle legacy array/list types with items property
+  if ((normalizedType === "array" || normalizedType === "list") && field.items) {
     schema.items = fieldToJsonSchema(field.items, "item", schemas, visited);
   }
 
   // Handle object types
-  if (field.type === "object" && field.properties) {
+  if (normalizedType === "object" && field.properties) {
     const properties: Record<string, unknown> = {};
     const required: string[] = [];
     for (const [propName, propField] of Object.entries(field.properties)) {
@@ -157,7 +222,11 @@ export class SchemaValidator {
   private validators: Map<string, ValidateFunction> = new Map();
 
   constructor() {
-    this.ajv = new Ajv({ allErrors: true, strict: false });
+    this.ajv = new Ajv({ 
+      allErrors: true, 
+      strict: false,
+      validateSchema: false // Don't validate schema structure itself
+    });
     addFormats(this.ajv);
   }
 
@@ -167,9 +236,22 @@ export class SchemaValidator {
   registerSchemas(schemas: YamaSchemas): void {
     this.validators.clear();
 
+    // Build definitions map for $ref support
+    const definitions: Record<string, unknown> = {};
     for (const [schemaName, schemaDef] of Object.entries(schemas)) {
       const schema = schemaToJsonSchema(schemaName, schemaDef, schemas);
-      const validator = this.ajv.compile(schema);
+      definitions[schemaName] = schema;
+    }
+
+    // Register each schema with definitions included
+    for (const [schemaName, schemaDef] of Object.entries(schemas)) {
+      const schema = schemaToJsonSchema(schemaName, schemaDef, schemas);
+      // Add definitions to support $ref
+      const schemaWithDefs = {
+        ...schema,
+        definitions
+      };
+      const validator = this.ajv.compile(schemaWithDefs);
       this.validators.set(schemaName, validator);
     }
   }

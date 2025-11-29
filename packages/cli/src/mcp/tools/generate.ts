@@ -13,7 +13,7 @@ const inputSchema = z.object({
 
 export const yamaGenerateTool = {
   name: "yama_generate",
-  description: "Generate TypeScript types and SDK from yama.yaml configuration",
+  description: "Generates TypeScript types, SDK, and client code from your yama.yaml configuration file. Use this tool when the user asks to generate types, generate SDK, generate code, create types, build types, or when they need to regenerate code after making changes to their YAMA configuration. This tool creates TypeScript type definitions and SDK code that can be used in your application to interact with your YAMA API endpoints.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

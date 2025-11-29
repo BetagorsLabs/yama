@@ -11,10 +11,11 @@ export interface CapturedOutput {
 
 /**
  * Capture stdout and stderr from a function execution
+ * Returns output even if the function throws an error
  */
 export async function captureOutput<T>(
   fn: () => Promise<T>
-): Promise<{ result: T; output: CapturedOutput }> {
+): Promise<{ result?: T; output: CapturedOutput; error?: unknown }> {
   const stdoutChunks: string[] = [];
   const stderrChunks: string[] = [];
 
@@ -53,16 +54,23 @@ export async function captureOutput<T>(
     stderrChunks.push(args.map(String).join(" ") + "\n");
   };
 
+  const output: CapturedOutput = {
+    stdout: "",
+    stderr: "",
+  };
+
+  let result: T | undefined;
+  let error: unknown;
+
   try {
-    const result = await fn();
-    return {
-      result,
-      output: {
-        stdout: stdoutChunks.join(""),
-        stderr: stderrChunks.join(""),
-      },
-    };
+    result = await fn();
+  } catch (err) {
+    error = err;
   } finally {
+    // Capture output before restoring console methods
+    output.stdout = stdoutChunks.join("");
+    output.stderr = stderrChunks.join("");
+    
     // Restore original streams and console methods
     process.stdout.write = originalStdout;
     process.stderr.write = originalStderr;
@@ -70,6 +78,15 @@ export async function captureOutput<T>(
     console.error = originalConsoleError;
     console.warn = originalConsoleWarn;
   }
+  
+  if (error) {
+    return { output, error };
+  }
+  
+  return {
+    result: result!,
+    output,
+  };
 }
 
 /**
@@ -81,6 +98,7 @@ export async function executeCommand<T>(
 ): Promise<{ success: boolean; output: string; error?: string; data?: T }> {
   const originalExit = process.exit;
   let exitCode: number | null = null;
+  let capturedOutput: CapturedOutput | null = null;
 
   // Override process.exit to capture exit code
   if (options?.suppressExit) {
@@ -91,35 +109,57 @@ export async function executeCommand<T>(
   }
 
   try {
-    const { result, output } = await captureOutput(fn);
+    const captureResult = await captureOutput(fn);
+    capturedOutput = captureResult.output;
     const success = exitCode === null || exitCode === 0;
+    const combinedOutput = captureResult.output.stdout + captureResult.output.stderr;
 
-    return {
-      success,
-      output: output.stdout + output.stderr,
-      data: result,
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const isExitError = errorMessage.includes("Process exit called");
+    // If there was an error but we have output, return it
+    if (captureResult.error) {
+      const errorMessage = captureResult.error instanceof Error ? captureResult.error.message : String(captureResult.error);
+      const isExitError = errorMessage.includes("Process exit called");
 
-    if (isExitError && exitCode !== null) {
+      if (isExitError && exitCode !== null) {
+        // For successful exits (code 0), don't include error message
+        // The output should already contain success/failure messages from the command
+        return {
+          success: exitCode === 0,
+          output: combinedOutput,
+          error: exitCode !== 0 ? `Command exited with code ${exitCode}` : undefined,
+          data: captureResult.result,
+        };
+      }
+
       return {
-        success: exitCode === 0,
-        output: "",
-        error: exitCode !== 0 ? `Command exited with code ${exitCode}` : undefined,
+        success: false,
+        output: combinedOutput,
+        error: errorMessage,
+        data: captureResult.result,
       };
     }
 
     return {
+      success,
+      output: combinedOutput,
+      data: captureResult.result,
+    };
+  } catch (error) {
+    // Fallback error handling
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const outputText = capturedOutput 
+      ? capturedOutput.stdout + capturedOutput.stderr 
+      : "";
+
+    return {
       success: false,
-      output: "",
+      output: outputText,
       error: errorMessage,
     };
   } finally {
     process.exit = originalExit;
   }
 }
+
 
 
 

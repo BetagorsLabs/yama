@@ -274,6 +274,24 @@ export async function createCommand(projectName?: string, options: CreateOptions
   // Handle `.` for current directory (like Next.js)
   const useCurrentDir = projectName === "." || projectName === "./";
   
+  // Check if we should use TUI mode (only for interactive mode, not for current dir)
+  const needsPrompts = !useCurrentDir && !projectName && !isNonInteractive && !options.database;
+  if (needsPrompts) {
+    const { shouldUseTUI } = await import("../utils/tui-utils.ts");
+    const useTUI = shouldUseTUI();
+    
+    if (useTUI) {
+      try {
+        const { runCreateTUI } = await import("../tui/CreateCommand.tsx");
+        runCreateTUI({ projectName, database: options.database, yes: options.yes });
+        return;
+      } catch (error) {
+        // If TUI fails, fall back to inquirer
+        console.warn("TUI mode failed, falling back to text prompts");
+      }
+    }
+  }
+  
   let finalProjectName: string;
   let projectPath: string;
   
@@ -615,12 +633,10 @@ ${yamlContent}`;
   // Create example handler
   const handlerSpinner = createSpinner("Creating example handler...");
   try {
-    const handlerContent = `import type { HttpRequest, HttpResponse } from "@betagors/yama-core";
-import type { Example } from "@gen/types";
+    const handlerContent = `import type { GetExamplesHandlerContext, Example } from "@yama/gen";
 
 export async function getExamples(
-  request: HttpRequest,
-  reply: HttpResponse
+  context: GetExamplesHandlerContext
 ): Promise<Example> {
   return {
     id: "1",

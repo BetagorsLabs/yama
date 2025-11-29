@@ -1,0 +1,311 @@
+# yaml-language-server: $schema=../../packages/cli/src/yama.schema.json
+project:
+  name: blog-api
+  version: 1.0.0
+
+plugins:
+  "@betagors/yama-pglite":
+    url: ${DATABASE_URL}
+
+schemas:
+  Post:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      title:
+        type: string
+      content:
+        type: string
+      excerpt:
+        type: string
+      published:
+        type: boolean
+        default: false
+      publishedAt:
+        type: string
+        format: date-time
+        nullable: true
+      authorId:
+        type: string
+        format: uuid
+      createdAt:
+        type: string
+        format: date-time
+      updatedAt:
+        type: string
+        format: date-time
+
+  Author:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      name:
+        type: string
+      email:
+        type: string
+        format: email
+      bio:
+        type: string
+        nullable: true
+      createdAt:
+        type: string
+        format: date-time
+      updatedAt:
+        type: string
+        format: date-time
+
+  Comment:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      content:
+        type: string
+      authorName:
+        type: string
+      authorEmail:
+        type: string
+        format: email
+      postId:
+        type: string
+        format: uuid
+      createdAt:
+        type: string
+        format: date-time
+      updatedAt:
+        type: string
+        format: date-time
+
+  PostWithAuthor:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      title:
+        type: string
+      content:
+        type: string
+      excerpt:
+        type: string
+      published:
+        type: boolean
+      publishedAt:
+        type: string
+        format: date-time
+        nullable: true
+      author:
+        type: Author
+      createdAt:
+        type: string
+        format: date-time
+      updatedAt:
+        type: string
+        format: date-time
+
+entities:
+  Author:
+    table: authors
+    crud:
+      enabled: true
+    fields:
+      id: uuid!
+      name: string!
+      email: string! unique  # Inline constraint: unique
+      bio: text?
+      createdAt: timestamp = now
+      updatedAt: timestamp = now
+
+  Post:
+    table: posts
+    crud:
+      enabled: true
+    fields:
+      id: uuid!
+      title: string! indexed
+      content: text!
+      excerpt: string?
+      published: boolean = false
+      publishedAt: timestamp?
+      # Inline relation - auto-generates authorId: uuid!
+      author: Author! cascade
+      createdAt: timestamp = now
+      updatedAt: timestamp = now
+    indexes:
+      - [authorId, publishedAt]  # authorId auto-generated from inline relation
+      - published
+
+  Comment:
+    table: comments
+    crud:
+      enabled: true
+    fields:
+      id: uuid!
+      content: text!
+      authorName: string!
+      authorEmail: string!
+      # Inline relation - auto-generates postId: uuid!
+      post: Post! cascade
+      createdAt: timestamp = now
+      updatedAt: timestamp = now
+    indexes:
+      - postId  # postId auto-generated from inline relation
+
+endpoints:
+  - path: /posts
+    method: GET
+    handler: handlers/listPosts
+    response:
+      type: PostWithAuthor[]
+    query:
+      type: object
+      properties:
+        published:
+          type: boolean
+        authorId:
+          type: string
+          format: uuid
+        limit:
+          type: number
+          default: 10
+        offset:
+          type: number
+          default: 0
+
+  - path: /posts
+    method: POST
+    handler: handlers/createPost
+    body:
+      type: Post
+    response:
+      type: Post
+
+  - path: /posts/{id}
+    method: GET
+    handler: handlers/getPost
+    response:
+      type: PostWithAuthor
+    params:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+
+  - path: /posts/{id}
+    method: PUT
+    handler: handlers/updatePost
+    body:
+      type: Post
+    response:
+      type: Post
+    params:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+
+  - path: /posts/{id}
+    method: DELETE
+    handler: handlers/deletePost
+    response:
+      type: object
+      properties:
+        success:
+          type: boolean
+    params:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+
+  - path: /posts/{id}/publish
+    method: POST
+    handler: handlers/publishPost
+    response:
+      type: Post
+    params:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+
+  - path: /posts/{id}/comments
+    method: GET
+    handler: handlers/getPostComments
+    response:
+      type: Comment[]
+    params:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+
+  - path: /posts/{id}/comments
+    method: POST
+    handler: handlers/createComment
+    body:
+      type: object
+      properties:
+        content:
+          type: string
+        authorName:
+          type: string
+        authorEmail:
+          type: string
+          format: email
+    response:
+      type: Comment
+    params:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+
+  - path: /authors
+    method: GET
+    handler: handlers/listAuthors
+    response:
+      type: Author[]
+
+  - path: /authors
+    method: POST
+    handler: handlers/createAuthor
+    body:
+      type: Author
+    response:
+      type: Author
+
+  - path: /authors/{id}
+    method: GET
+    handler: handlers/getAuthor
+    response:
+      type: Author
+    params:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+
+  - path: /authors/{id}/posts
+    method: GET
+    handler: handlers/getAuthorPosts
+    response:
+      type: Post[]
+    params:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid

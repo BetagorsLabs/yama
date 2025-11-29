@@ -11,7 +11,7 @@ const inputSchema = z.object({
 
 export const yamaConfigTool = {
   name: "yama_config",
-  description: "Read and display yama.yaml configuration",
+  description: "Reads and displays the yama.yaml configuration file. ALWAYS use this tool when the user asks to: see the configuration, view config, read yama.yaml, show settings, display config, get config, show yama config, view yama.yaml, or when you need to understand the current YAMA project configuration including plugins, endpoints, schemas, and other settings.",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const configPath = args.config || findYamaConfig() || "yama.yaml";

@@ -1,0 +1,26 @@
+{
+  "name": "examples/blog-api",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "@gen/db": "./.yama/gen/db/index.ts",
+    "@gen/types": "./.yama/gen/types.ts",
+    "@gen/sdk": "./.yama/gen/sdk/index.ts"
+  },
+  "scripts": {
+    "yama": "yama",
+    "dev": "yama dev",
+    "build": "yama generate",
+    "start": "yama dev"
+  },
+  "dependencies": {
+    "@betagors/yama-core": "file:../../packages/core",
+    "@betagors/yama-pglite": "0.1.0-alpha.0",
+    "@betagors/yama-postgres": "file:../../packages/postgres",
+    "@betagors/yama-runtime-node": "file:../../packages/runtime-node",
+    "postgres": "^3.4.3"
+  },
+  "devDependencies": {
+    "@betagors/yama-cli": "file:../../packages/cli"
+  }
+}
