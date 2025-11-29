@@ -9,7 +9,7 @@ const inputSchema = z.object({
 });
 
 export const yamaSchemaStatusTool = {
-  name: "yama_schema_status",
+  name: "yama_migration_status",
   description: "Check migration status - see which migrations are applied and pending",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {

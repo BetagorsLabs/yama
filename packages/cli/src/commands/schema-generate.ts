@@ -605,7 +605,7 @@ export async function schemaGenerateCommand(options: SchemaGenerateOptions): Pro
 
     printHints([
       "Review the migration files before applying",
-      "Run 'yama schema:apply' to apply the migration",
+      "Run 'yama migration:apply' to apply the migration",
     ]);
   } catch (err) {
     error(`Failed to generate migration: ${err instanceof Error ? err.message : String(err)}`);

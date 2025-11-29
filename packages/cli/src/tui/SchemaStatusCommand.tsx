@@ -35,7 +35,7 @@ export function SchemaStatusCommandTUI({ migrations, pendingCount }: SchemaStatu
           <StatusIndicator status="success" label="All migrations are applied." />
         ) : (
           <Text color="yellow">
-            {pendingCount} migration(s) pending. Apply with: yama schema:apply
+            {pendingCount} migration(s) pending. Apply with: yama migration:apply
           </Text>
         )}
       </Box>

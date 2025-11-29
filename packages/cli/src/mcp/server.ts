@@ -10,8 +10,8 @@ import {
 // Import tools
 import { yamaValidateTool } from "./tools/validate.ts";
 import { yamaGenerateTool } from "./tools/generate.ts";
-import { yamaSchemaGenerateTool } from "./tools/schema-generate.ts";
-import { yamaSchemaStatusTool } from "./tools/schema-status.ts";
+import { yamaSchemaGenerateTool as yamaMigrationGenerateTool } from "./tools/schema-generate.ts";
+import { yamaSchemaStatusTool as yamaMigrationStatusTool } from "./tools/schema-status.ts";
 import { yamaConfigTool } from "./tools/config.ts";
 import { yamaEndpointsTool } from "./tools/endpoints.ts";
 import { yamaSchemasTool } from "./tools/schemas.ts";
@@ -27,8 +27,8 @@ import { getMigrationStatusResource } from "./resources/migration-status.ts";
 const tools = [
   yamaValidateTool,
   yamaGenerateTool,
-  yamaSchemaGenerateTool,
-  yamaSchemaStatusTool,
+  yamaMigrationGenerateTool,
+  yamaMigrationStatusTool,
   yamaConfigTool,
   yamaEndpointsTool,
   yamaSchemasTool,

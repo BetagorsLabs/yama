@@ -124,7 +124,7 @@ Once Cursor is restarted, you can test the MCP by asking the AI assistant to:
    ```
    "Check my schema migration status"
    ```
-   The AI should call the `yama_schema_status` tool.
+   The AI should call the `yama_migration_status` tool.
 
 ## Step 4: Manual Testing (Advanced)
 
@@ -248,8 +248,8 @@ The YAMA MCP server provides these tools:
 
 1. **yama_validate** - Validate yama.yaml configuration
 2. **yama_generate** - Generate TypeScript types and SDK
-3. **yama_schema_generate** - Generate database migrations
-4. **yama_schema_status** - Check migration status
+3. **yama_migration_generate** - Generate database migrations
+4. **yama_migration_status** - Check migration status
 5. **yama_config** - Read yama.yaml configuration
 6. **yama_endpoints** - List all endpoints
 7. **yama_schemas** - List all schemas

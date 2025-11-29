@@ -27,8 +27,8 @@ export function parseError(err: unknown): ErrorContext {
       message: errorMessage,
       suggestions: [
         "This usually means the migration was partially applied or there's schema drift",
-        "Run: yama schema:check --diff to see the current state",
-        "Run: yama schema:fix-drift to detect and fix drift",
+        "Run: yama migration:check --diff to see the current state",
+        "Run: yama migration:fix-drift to detect and fix drift",
       ],
     };
   }
@@ -44,7 +44,7 @@ export function parseError(err: unknown): ErrorContext {
       message: errorMessage,
       suggestions: [
         "Check if the referenced table has data matching the foreign key",
-        "Run: yama schema:check --verbose for more details",
+        "Run: yama migration:check --verbose for more details",
         "Verify data integrity before applying the migration",
       ],
     };
@@ -58,7 +58,7 @@ export function parseError(err: unknown): ErrorContext {
       suggestions: [
         "The migration's from_model.hash doesn't match the current database state",
         "This usually means migrations were applied out of order or manually modified",
-        "Run: yama schema:check to see the current state",
+        "Run: yama migration:check to see the current state",
         "You may need to manually reconcile the database state",
       ],
     };

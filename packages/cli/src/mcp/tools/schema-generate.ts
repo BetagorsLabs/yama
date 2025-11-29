@@ -10,8 +10,8 @@ const inputSchema = z.object({
 });
 
 export const yamaSchemaGenerateTool = {
-  name: "yama_schema_generate",
-  description: "Generate migration from schema changes in yama.yaml",
+  name: "yama_migration_generate",
+  description: "Generate migration from entity changes in yama.yaml",
   inputSchema,
   handler: async (args: z.infer<typeof inputSchema>) => {
     const result = await executeCommand(

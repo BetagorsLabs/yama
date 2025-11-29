@@ -65,14 +65,14 @@ Generates TypeScript types and SDK from your YAMA configuration.
 - `config` (optional): Path to yama.yaml configuration file
 - `watch` (optional): Enable watch mode
 
-### 3. `yama_schema_generate`
-Generates database migrations from schema definitions.
+### 3. `yama_migration_generate`
+Generates database migrations from entity definitions.
 
 **Parameters:**
 - `config` (optional): Path to yama.yaml configuration file
 - `name` (optional): Migration name
 
-### 4. `yama_schema_status`
+### 4. `yama_migration_status`
 Checks the status of database migrations.
 
 **Parameters:**

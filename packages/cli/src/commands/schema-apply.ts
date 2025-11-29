@@ -57,7 +57,7 @@ export async function schemaApplyCommand(options: SchemaApplyOptions): Promise<v
     const migrationsDir = join(configDir, "migrations");
 
     if (!existsSync(migrationsDir)) {
-      info("No migrations directory found. Run 'yama schema:generate' first.");
+      info("No migrations directory found. Run 'yama migration:generate' first.");
       return;
     }
 
@@ -343,8 +343,8 @@ export async function schemaApplyCommand(options: SchemaApplyOptions): Promise<v
 
     if (appliedCount > 0) {
       printHints([
-        "Run 'yama schema:check' to verify schema is in sync",
-        "Run 'yama schema:status' to see migration status",
+        "Run 'yama migration:check' to verify migration is in sync",
+        "Run 'yama migration:status' to see migration status",
       ]);
     }
   } catch (err) {

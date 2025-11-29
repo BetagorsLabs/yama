@@ -360,8 +360,8 @@ export async function addEntityCommand(options: AddEntityOptions): Promise<void>
     }
 
     console.log("\n💡 Next steps:");
-    console.log("   1. Run 'yama schema:generate' to create a migration");
-    console.log("   2. Run 'yama schema:apply' to apply the migration");
+    console.log("   1. Run 'yama migration:generate' to create a migration");
+    console.log("   2. Run 'yama migration:apply' to apply the migration");
     console.log("   3. Run 'yama generate' to update types and SDK");
   } catch (err) {
     error(`Failed to add entity: ${err instanceof Error ? err.message : String(err)}`);

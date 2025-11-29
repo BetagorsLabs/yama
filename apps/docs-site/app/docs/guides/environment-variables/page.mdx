@@ -129,8 +129,8 @@ Most commands support the `--env` flag:
 yama dev --env development
 
 # Schema operations
-yama schema:check --env production
-yama schema:apply --env staging
+yama migration:check --env production
+yama migration:apply --env staging
 
 # Code generation
 yama generate --env production

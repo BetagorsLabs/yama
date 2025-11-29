@@ -127,14 +127,14 @@ yama docs --format markdown --output API.md
 
 ---
 
-## Schema & Migrations
+## Migrations
 
-### `yama schema:generate`
+### `yama migration:generate`
 
-Generate a new migration from schema changes.
+Generate a new migration from entity changes.
 
 ```bash
-yama schema:generate [options]
+yama migration:generate [options]
 ```
 
 **Options:**
@@ -145,15 +145,15 @@ yama schema:generate [options]
 
 **Example:**
 ```bash
-yama schema:generate --name add_users_table
+yama migration:generate --name add_users_table
 ```
 
-### `yama schema:apply`
+### `yama migration:apply`
 
 Apply pending migrations to the database.
 
 ```bash
-yama schema:apply [options]
+yama migration:apply [options]
 ```
 
 **Options:**
@@ -165,17 +165,17 @@ yama schema:apply [options]
 
 **Examples:**
 ```bash
-yama schema:apply
-yama schema:apply --env production
-yama schema:apply --dry-run
+yama migration:apply
+yama migration:apply --env production
+yama migration:apply --dry-run
 ```
 
-### `yama schema:status`
+### `yama migration:status`
 
 Check migration status.
 
 ```bash
-yama schema:status [options]
+yama migration:status [options]
 ```
 
 **Options:**
@@ -183,20 +183,20 @@ yama schema:status [options]
 |--------|-------------|
 | `--env <environment>` | Target environment |
 
-### `yama schema:history`
+### `yama migration:history`
 
 View migration history.
 
 ```bash
-yama schema:history [options]
+yama migration:history [options]
 ```
 
-### `yama schema:rollback`
+### `yama migration:rollback`
 
 Roll back migrations.
 
 ```bash
-yama schema:rollback [options]
+yama migration:rollback [options]
 ```
 
 **Options:**
@@ -205,12 +205,12 @@ yama schema:rollback [options]
 | `--steps <n>` | Number of migrations to roll back |
 | `--env <environment>` | Target environment |
 
-### `yama schema:check`
+### `yama migration:check`
 
-Check if database is in sync with schema.
+Check if database is in sync with entities.
 
 ```bash
-yama schema:check [options]
+yama migration:check [options]
 ```
 
 ### `yama schema:scaffold`

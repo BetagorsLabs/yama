@@ -227,8 +227,8 @@ program
 
 // Schema management
 program
-  .command("schema:check")
-  .description("Check if schema is in sync with database")
+  .command("migration:check")
+  .description("Check if migration is in sync with database")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .option("--diff", "Show detailed diff")
   .option("--ci", "CI mode: minimal output, exit code only")
@@ -236,8 +236,8 @@ program
   .action(schemaCheckCommand);
 
 program
-  .command("schema:generate")
-  .description("Generate migration from schema changes")
+  .command("migration:generate")
+  .description("Generate migration from entity changes")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .option("-n, --name <name>", "Migration name")
   .option("--preview", "Preview changes without generating files")
@@ -245,7 +245,7 @@ program
   .action(schemaGenerateCommand);
 
 program
-  .command("schema:apply")
+  .command("migration:apply")
   .description("Apply pending migrations")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .option("--env <env>", "Environment (local, staging, prod)", "local")
@@ -255,7 +255,7 @@ program
   .action(schemaApplyCommand);
 
 program
-  .command("schema:status")
+  .command("migration:status")
   .description("Check migration status")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .option("--short", "Short output format")
@@ -263,13 +263,13 @@ program
   .action(schemaStatusCommand);
 
 program
-  .command("schema:watch")
-  .description("Watch for schema changes and auto-check")
+  .command("migration:watch")
+  .description("Watch for entity changes and auto-check")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .action(schemaWatchCommand);
 
 program
-  .command("schema:history")
+  .command("migration:history")
   .description("Show migration history")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .option("--graph", "Show timeline graph")
@@ -277,7 +277,7 @@ program
   .action(schemaHistoryCommand);
 
 program
-  .command("schema:rollback")
+  .command("migration:rollback")
   .description("Rollback applied migrations")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .option("--steps <number>", "Number of migrations to rollback (default: 1)")

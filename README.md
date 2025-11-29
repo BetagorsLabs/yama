@@ -184,10 +184,10 @@ yama sdk                 # Generate SDK only
 ### Database Migrations
 
 ```bash
-yama schema:generate      # Generate migration from schema
-yama schema:apply         # Apply pending migrations
-yama schema:status        # Check migration status
-yama schema:history       # View migration history
+yama migration:generate   # Generate migration from entities
+yama migration:apply      # Apply pending migrations
+yama migration:status    # Check migration status
+yama migration:history    # View migration history
 ```
 
 ### Validation

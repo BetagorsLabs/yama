@@ -97,7 +97,7 @@ export async function schemaCheckCommand(options: SchemaCheckOptions): Promise<v
         process.exit(1);
       }
       console.log(colors.warning("⚠️  No migrations applied yet. Database appears to be empty."));
-      console.log(colors.info("💡 Run 'yama schema:generate' to create your first migration."));
+      console.log(colors.info("💡 Run 'yama migration:generate' to create your first migration."));
       process.exit(1);
     }
 
@@ -125,10 +125,10 @@ export async function schemaCheckCommand(options: SchemaCheckOptions): Promise<v
 
     if (options.diff) {
       // TODO: Reconstruct current model from DB and show detailed diff
-      console.log(colors.info("\n💡 Run 'yama schema:generate' to create a migration for these changes."));
+      console.log(colors.info("\n💡 Run 'yama migration:generate' to create a migration for these changes."));
     } else {
-      console.log(colors.info("\n💡 Run 'yama schema:check --diff' to see detailed changes."));
-      console.log(colors.info("💡 Run 'yama schema:generate' to create a migration."));
+      console.log(colors.info("\n💡 Run 'yama migration:check --diff' to see detailed changes."));
+      console.log(colors.info("💡 Run 'yama migration:generate' to create a migration."));
     }
 
     process.exit(1);

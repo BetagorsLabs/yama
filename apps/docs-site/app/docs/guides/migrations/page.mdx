@@ -4,14 +4,14 @@ Yama provides a complete migration system to manage your database schema changes
 
 ## Overview
 
-Migrations are versioned SQL files that track changes to your database schema. Yama generates migrations from your `yama.yaml` schemas and applies them in order.
+Migrations are versioned SQL files that track changes to your database schema. Yama generates migrations from your `yama.yaml` entities and applies them in order.
 
 ## Generate a Migration
 
-When you modify schemas in `yama.yaml`, generate a migration:
+When you modify entities in `yama.yaml`, generate a migration:
 
 ```bash
-yama schema:generate --name add_users_table
+yama migration:generate --name add_users_table
 ```
 
 This creates a migration file in `migrations/`:
@@ -46,13 +46,13 @@ DROP TABLE IF EXISTS users;
 Apply pending migrations to your database:
 
 ```bash
-yama schema:apply
+yama migration:apply
 ```
 
 For a specific environment:
 
 ```bash
-yama schema:apply --env production
+yama migration:apply --env production
 ```
 
 ## Check Migration Status
@@ -60,7 +60,7 @@ yama schema:apply --env production
 See which migrations have been applied:
 
 ```bash
-yama schema:status
+yama migration:status
 ```
 
 Output:
@@ -78,7 +78,7 @@ Migration Status
 See the complete migration history:
 
 ```bash
-yama schema:history
+yama migration:history
 ```
 
 ## Rollback Migrations
@@ -86,21 +86,21 @@ yama schema:history
 Roll back the last migration:
 
 ```bash
-yama schema:rollback
+yama migration:rollback
 ```
 
 Roll back multiple migrations:
 
 ```bash
-yama schema:rollback --steps 3
+yama migration:rollback --steps 3
 ```
 
-## Schema Sync Check
+## Migration Sync Check
 
 Check if your database is in sync with `yama.yaml`:
 
 ```bash
-yama schema:check
+yama migration:check
 ```
 
 ## Scaffold Common Changes
@@ -132,13 +132,13 @@ cat migrations/20231126120000_add_users_table.sql
 
 ```bash
 # Apply to development database
-yama schema:apply --env development
+yama migration:apply --env development
 
 # Verify the changes
 yama db inspect users
 
 # Then apply to production
-yama schema:apply --env production
+yama migration:apply --env production
 ```
 
 ### 3. Use Transactions
@@ -197,13 +197,13 @@ Apply migrations to different environments:
 
 ```bash
 # Development
-yama schema:apply --env development
+yama migration:apply --env development
 
 # Staging
-yama schema:apply --env staging
+yama migration:apply --env staging
 
 # Production
-yama schema:apply --env production
+yama migration:apply --env production
 ```
 
 Each environment uses its own database URL from the corresponding `.env` file.
@@ -216,7 +216,7 @@ If a migration fails:
 
 1. Check the error message
 2. Fix the SQL in the migration file
-3. Re-run `yama schema:apply`
+3. Re-run `yama migration:apply`
 
 ### Out of Sync
 
@@ -224,10 +224,10 @@ If your database is out of sync:
 
 ```bash
 # Check current state
-yama schema:status
+yama migration:status
 
 # Force sync (use with caution)
-yama schema:apply --force
+yama migration:apply --force
 ```
 
 ### Conflicting Migrations
@@ -236,4 +236,4 @@ If you have conflicting migrations from different branches:
 
 1. Merge the branches
 2. Resolve conflicts in migration files
-3. Run `yama schema:apply`
+3. Run `yama migration:apply`

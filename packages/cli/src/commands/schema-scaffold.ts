@@ -62,7 +62,7 @@ export async function schemaScaffoldCommand(
       writeFileSync(configPath, yamlContent, "utf-8");
 
       success(`Scaffolded table: ${tableName}`);
-      info(`Run 'yama schema:generate' to create migration`);
+      info(`Run 'yama migration:generate' to create migration`);
     } else if (action === "add-column" && args.length >= 3) {
       const [tableName, columnName, columnType] = args;
       const entityName = Object.keys(entities).find(
@@ -80,7 +80,7 @@ export async function schemaScaffoldCommand(
       };
 
       success(`Scaffolded column: ${tableName}.${columnName}`);
-      info(`Run 'yama schema:generate' to create migration`);
+      info(`Run 'yama migration:generate' to create migration`);
     } else {
       error("Invalid scaffold command");
       error("Usage: yama schema:scaffold add-table <name>");

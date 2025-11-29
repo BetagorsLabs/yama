@@ -155,8 +155,8 @@ export async function migrationCreateCommand(
     info("\n   Next steps:");
     info("   1. Edit the migration file to add your SQL");
     info("   2. Review the migration carefully");
-    info("   3. Test locally: yama schema:apply --env development");
-    info("   4. Apply to production: yama schema:apply --env production");
+    info("   3. Test locally: yama migration:apply --env development");
+    info("   4. Apply to production: yama migration:apply --env production");
   } catch (err) {
     error(`Failed to create migration: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);

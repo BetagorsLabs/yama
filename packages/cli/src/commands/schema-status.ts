@@ -166,7 +166,7 @@ export async function schemaStatusCommand(options: SchemaStatusOptions): Promise
     if (pendingCount === 0) {
       success("\nAll migrations are applied.");
     } else {
-      info(`\n${pendingCount} migration(s) pending. Apply with: yama schema:apply`);
+      info(`\n${pendingCount} migration(s) pending. Apply with: yama migration:apply`);
     }
 
     await dbPlugin.client.closeDatabase();
