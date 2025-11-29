@@ -32,7 +32,8 @@
   "scripts": {
     "build": "pnpm exec tsc --build tsconfig.build.json",
     "dev": "pnpm exec tsc --build -w tsconfig.build.json",
-    "lint": "echo \"no lint yet\"",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
