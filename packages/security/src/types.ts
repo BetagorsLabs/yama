@@ -103,3 +103,4 @@ export interface SecurityPluginConfig {
   sanitization?: SanitizationConfig | false;
 }
 
+

@@ -72,3 +72,4 @@ const json = metrics.export("json");
 - `export(format)` - Export metrics in specified format
 - `autoInstrument(pluginName, api)` - Auto-instrument a plugin API
 
+

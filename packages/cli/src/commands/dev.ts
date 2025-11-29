@@ -5,8 +5,22 @@ import type { FSWatcher } from "chokidar";
 import chokidar from "chokidar";
 import { findYamaConfig } from "../utils/project-detection.ts";
 import { generateOnce } from "./generate.ts";
-import { loadEnvFile } from "@betagors/yama-core";
-import { readYamaConfig } from "../utils/file-utils.ts";
+import { 
+  loadEnvFile, 
+  resolveEnvVars,
+  createSnapshot,
+  saveSnapshot,
+  loadSnapshot,
+  getCurrentSnapshot,
+  updateState,
+  entitiesToModel,
+  computeDiff,
+  diffToSteps,
+  createTransition,
+  saveTransition,
+  snapshotExists,
+} from "@betagors/yama-core";
+import { readYamaConfig, getConfigDir } from "../utils/file-utils.ts";
 
 interface DevOptions {
   port?: string;
@@ -424,6 +438,79 @@ function setupWatchMode(configPath: string): void {
 }
 
 /**
+ * Handle schema changes - create snapshots and transitions
+ */
+async function handleSchemaChanges(configPath: string, environment: string): Promise<void> {
+  try {
+    const configDir = getConfigDir(configPath);
+    const config = readYamaConfig(configPath) as any;
+    const resolvedConfig = resolveEnvVars(config) as any;
+    
+    if (!resolvedConfig.entities) {
+      return; // No entities, skip
+    }
+    
+    // Get current snapshot
+    const currentSnapshotHash = getCurrentSnapshot(configDir, environment);
+    
+    // Create snapshot from current entities
+    const newSnapshot = createSnapshot(
+      resolvedConfig.entities,
+      {
+        createdAt: new Date().toISOString(),
+        createdBy: process.env.USER || "dev",
+        description: "Auto-generated from yama dev",
+      },
+      currentSnapshotHash || undefined
+    );
+    
+    // Check if snapshot already exists (no changes)
+    if (snapshotExists(configDir, newSnapshot.hash)) {
+      return; // No changes
+    }
+    
+    // Save snapshot
+    saveSnapshot(configDir, newSnapshot);
+    console.log(`   📸 Snapshot created: ${newSnapshot.hash.substring(0, 8)}`);
+    
+    // Create transition if we have a previous snapshot
+    if (currentSnapshotHash) {
+      const fromSnapshot = loadSnapshot(configDir, currentSnapshotHash);
+      if (fromSnapshot) {
+        const fromModel = entitiesToModel(fromSnapshot.entities);
+        const toModel = entitiesToModel(newSnapshot.entities);
+        const diff = computeDiff(fromModel, toModel);
+        const steps = diffToSteps(diff, fromModel, toModel);
+        
+        if (steps.length > 0) {
+          const transition = createTransition(
+            currentSnapshotHash,
+            newSnapshot.hash,
+            steps,
+            {
+              description: "Auto-generated transition",
+              createdAt: new Date().toISOString(),
+            }
+          );
+          
+          saveTransition(configDir, transition);
+          console.log(`   🔄 Transition created: ${currentSnapshotHash.substring(0, 8)} -> ${newSnapshot.hash.substring(0, 8)}`);
+          console.log(`   Steps: ${steps.length}`);
+        }
+      }
+    }
+    
+    // Update state
+    updateState(configDir, environment, newSnapshot.hash);
+    
+  } catch (err) {
+    // Don't fail dev server if snapshot creation fails
+    console.warn("   ⚠️  Failed to create snapshot:", err instanceof Error ? err.message : String(err));
+  }
+}
+
+
+/**
  * Queue a restart with adaptive debouncing
  */
 function queueRestart(change: { type: "config" | "handler"; path: string; timestamp: number }): void {
@@ -495,6 +582,16 @@ async function processRestartQueue(): Promise<void> {
   // Find if any change is a config change (requires regeneration)
   const hasConfigChange = changes.some(c => c.type === "config");
   const latestChange = changes[changes.length - 1];
+  
+  // Handle schema changes (snapshot/transition system)
+  if (hasConfigChange) {
+    try {
+      await handleSchemaChanges(currentConfigPath, currentEnvironment);
+    } catch (err) {
+      console.warn("   ⚠️  Schema change handling failed:", err instanceof Error ? err.message : String(err));
+      // Continue with restart anyway
+    }
+  }
   
   // Update last restart time
   lastRestartTime = now;

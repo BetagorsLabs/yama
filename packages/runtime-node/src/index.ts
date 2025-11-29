@@ -126,6 +126,18 @@ interface YamaConfig {
       }>;
     }>;
   };
+  monitoring?: {
+    level?: "debug" | "info" | "warn" | "error";
+    sampling?: {
+      rate?: number; // 0-1, sample rate for requests
+      errors?: number; // 0-1, sample rate for errors (usually 1.0)
+    };
+    custom?: Array<{
+      name: string;
+      type: "counter" | "gauge" | "histogram";
+      description?: string;
+    }>;
+  };
   endpoints?: Array<{
     path: string;
     method: string;
@@ -509,7 +521,9 @@ function createHandlerContext(
   cacheAdapter?: unknown,
   storage?: Record<string, StorageBucket>,
   realtimeAdapter?: unknown,
-  emailService?: any
+  emailService?: any,
+  loggerService?: any,
+  metricsService?: any
 ): HandlerContext {
   let statusCode: number | undefined;
   
@@ -574,6 +588,45 @@ function createHandlerContext(
     email: emailService ? {
       send: emailService.send.bind(emailService),
       sendBatch: emailService.sendBatch.bind(emailService),
+    } : undefined,
+    
+    // Logger access (from logging plugin)
+    logger: loggerService ? {
+      info: (message: string, meta?: Record<string, unknown>) => {
+        loggerService.info(message, meta);
+      },
+      warn: (message: string, meta?: Record<string, unknown>) => {
+        loggerService.warn(message, meta);
+      },
+      error: (message: string, error?: Error, meta?: Record<string, unknown>) => {
+        loggerService.error(message, error, meta);
+      },
+      debug: (message: string, meta?: Record<string, unknown>) => {
+        loggerService.debug(message, meta);
+      },
+    } : undefined,
+    
+    // Metrics access (from metrics plugin)
+    metrics: metricsService ? {
+      increment: (name: string, value?: number, tags?: Record<string, string>) => {
+        // Convert tags object to labels array format expected by metrics plugin
+        const labels = tags ? Object.keys(tags) : [];
+        const counter = metricsService.registerCounter(name, labels);
+        const labelValues = tags ? Object.values(tags) : [];
+        counter.inc(value || 1, labelValues);
+      },
+      histogram: (name: string, value: number, tags?: Record<string, string>) => {
+        const labels = tags ? Object.keys(tags) : [];
+        const histogram = metricsService.registerHistogram(name, labels);
+        const labelValues = tags ? Object.values(tags) : [];
+        histogram.observe(value, labelValues);
+      },
+      gauge: (name: string, value: number, tags?: Record<string, string>) => {
+        const labels = tags ? Object.keys(tags) : [];
+        const gauge = metricsService.registerGauge(name, labels);
+        const labelValues = tags ? Object.values(tags) : [];
+        gauge.set(value, labelValues);
+      },
     } : undefined,
     
     // Status helper
@@ -1229,7 +1282,10 @@ function registerRoutes(
   storage?: Record<string, StorageBucket>,
   realtimeAdapter?: unknown,
   middlewareRegistry?: MiddlewareRegistry,
-  emailService?: any
+  emailService?: any,
+  loggerService?: any,
+  metricsService?: any,
+  monitoringService?: any
 ) {
   if (!config.endpoints) {
     return;
@@ -1278,15 +1334,40 @@ function registerRoutes(
     // Wrap handler with validation and auth
     // The wrapped handler receives request/reply from the adapter, then creates context for user handlers
     const wrappedHandler: RouteHandler = async (request: HttpRequest, reply: HttpResponse) => {
+      // Record request start time for duration calculation
+      const startTime = Date.now();
+      
       // Create initial handler context (will be updated as we progress)
       let handlerContext: HandlerContext | null = null;
       let abortResponse: unknown | null = null;
 
       try {
         // ============================================
+        // MONITORING: Request Start
+        // ============================================
+        handlerContext = createHandlerContext(request, reply, undefined, repositories, dbAdapter, cacheAdapter, storage, realtimeAdapter, emailService, loggerService, metricsService);
+        
+        // Call monitoring hooks if available
+        if (monitoringService?.onRequestStart) {
+          try {
+            monitoringService.onRequestStart(request, handlerContext);
+          } catch (monitoringError) {
+            // Don't let monitoring errors break the request
+            console.error("Monitoring error in onRequestStart:", monitoringError);
+          }
+        }
+        
+        // Log request start
+        handlerContext.logger?.info("Request started", {
+          method: request.method,
+          path: request.path,
+          query: request.query,
+          params: request.params,
+        });
+
+        // ============================================
         // PHASE 1: PRE-AUTH MIDDLEWARE
         // ============================================
-        handlerContext = createHandlerContext(request, reply, undefined, repositories, dbAdapter, cacheAdapter, storage, realtimeAdapter, emailService);
         const preAuthResult = await executeMiddlewarePhase(middlewareRegistry, 'pre-auth', handlerContext, path, method);
         if (preAuthResult.aborted && preAuthResult.abortResponse !== undefined) {
           reply.status(200).send(preAuthResult.abortResponse);
@@ -1495,6 +1576,39 @@ function registerRoutes(
         handlerContext.params = request.params;
         handlerContext.body = request.body;
         handlerContext.headers = request.headers;
+        
+        // Re-inject services in case context was recreated
+        if (loggerService) {
+          handlerContext.logger = {
+            info: (message: string, meta?: Record<string, unknown>) => loggerService.info(message, meta),
+            warn: (message: string, meta?: Record<string, unknown>) => loggerService.warn(message, meta),
+            error: (message: string, error?: Error, meta?: Record<string, unknown>) => loggerService.error(message, error, meta),
+            debug: (message: string, meta?: Record<string, unknown>) => loggerService.debug(message, meta),
+          };
+        }
+        if (metricsService) {
+          handlerContext.metrics = {
+            increment: (name: string, value?: number, tags?: Record<string, string>) => {
+              const labels = tags ? Object.keys(tags) : [];
+              const counter = metricsService.registerCounter(name, labels);
+              const labelValues = tags ? Object.values(tags) : [];
+              counter.inc(value || 1, labelValues);
+            },
+            histogram: (name: string, value: number, tags?: Record<string, string>) => {
+              const labels = tags ? Object.keys(tags) : [];
+              const histogram = metricsService.registerHistogram(name, labels);
+              const labelValues = tags ? Object.values(tags) : [];
+              histogram.observe(value, labelValues);
+            },
+            gauge: (name: string, value: number, tags?: Record<string, string>) => {
+              const labels = tags ? Object.keys(tags) : [];
+              const gauge = metricsService.registerGauge(name, labels);
+              const labelValues = tags ? Object.values(tags) : [];
+              gauge.set(value, labelValues);
+            },
+          };
+        }
+        
         const context = handlerContext;
 
         // ============================================
@@ -1566,10 +1680,44 @@ function registerRoutes(
           reply.status(statusCode).send(result);
         }
         
+        // ============================================
+        // MONITORING: Request End (Success)
+        // ============================================
+        const duration = Date.now() - startTime;
+        
+        // Call monitoring hooks if available
+        if (monitoringService?.onRequestEnd) {
+          try {
+            monitoringService.onRequestEnd(request, reply, duration, context);
+          } catch (monitoringError) {
+            console.error("Monitoring error in onRequestEnd:", monitoringError);
+          }
+        }
+        
+        // Track metrics
+        context.metrics?.histogram("http.request.duration", duration, {
+          method: request.method,
+          path: request.path,
+        });
+        context.metrics?.increment("http.requests", 1, {
+          method: request.method,
+          path: request.path,
+          status: statusCode.toString(),
+        });
+        
+        // Log response
+        const logLevel = statusCode >= 500 ? "error" : statusCode >= 400 ? "warn" : "info";
+        context.logger?.[logLevel]("Request completed", {
+          method: request.method,
+          path: request.path,
+          status: statusCode,
+          duration,
+        });
+        
         return result;
       } catch (error) {
         // ============================================
-        // PHASE 5: ERROR MIDDLEWARE
+        // MONITORING: Error Capture
         // ============================================
         const currentHandlerLabel = typeof handlerConfig === "object" && handlerConfig.type === "query" 
           ? "query" 
@@ -1577,8 +1725,50 @@ function registerRoutes(
         
         // Ensure handler context exists for error middleware
         if (!handlerContext) {
-          handlerContext = createHandlerContext(request, reply, undefined, repositories, dbAdapter, cacheAdapter, storage, realtimeAdapter, emailService);
+          handlerContext = createHandlerContext(request, reply, undefined, repositories, dbAdapter, cacheAdapter, storage, realtimeAdapter, emailService, loggerService, metricsService);
         }
+        
+        // Call monitoring error hooks if available
+        if (monitoringService?.onError) {
+          try {
+            const errorContext = {
+              request: {
+                method: request.method,
+                path: request.path,
+                query: request.query,
+                params: request.params,
+                headers: request.headers,
+              },
+              user: handlerContext.auth?.user,
+              context: handlerContext,
+              metadata: {
+                handler: currentHandlerLabel,
+              },
+            };
+            monitoringService.onError(error instanceof Error ? error : new Error(String(error)), errorContext);
+          } catch (monitoringError) {
+            console.error("Monitoring error in onError:", monitoringError);
+          }
+        }
+        
+        // Track error metrics
+        const errorType = error instanceof Error ? error.constructor.name : "UnknownError";
+        handlerContext.metrics?.increment("http.errors", 1, {
+          method: request.method,
+          path: request.path,
+          errorType,
+        });
+        
+        // Log error
+        handlerContext.logger?.error("Request failed", error instanceof Error ? error : new Error(String(error)), {
+          method: request.method,
+          path: request.path,
+          handler: currentHandlerLabel,
+        });
+        
+        // ============================================
+        // PHASE 5: ERROR MIDDLEWARE
+        // ============================================
         
         try {
           const errorResult = await executeMiddlewarePhase(middlewareRegistry, 'error', handlerContext, path, method);
@@ -2099,14 +2289,9 @@ export async function startYamaNodeRuntime(
     }
   }
 
-  // Register built-in routes using adapter
-  serverAdapter.registerRoute(server, "GET", "/health", async (request: HttpRequest, reply: HttpResponse) => {
-    return {
-      status: "ok",
-      core: helloYamaCore(),
-      configLoaded: config !== null
-    };
-  });
+  // Note: Health endpoint is now auto-registered by health plugin (see above)
+  // Keeping /health as fallback only if no health plugin is loaded
+  // This will be registered after plugins are loaded, so we check if health plugin exists
 
   serverAdapter.registerRoute(server, "GET", "/config", async (request: HttpRequest, reply: HttpResponse) => {
     return { config };
@@ -2240,6 +2425,103 @@ export async function startYamaNodeRuntime(
     }
   }
 
+  // Get monitoring services from plugins
+  let loggerService: any = null;
+  let metricsService: any = null;
+  let monitoringService: any = null;
+  let healthService: any = null;
+  
+  // Get logger service from logging plugin
+  const loggingPlugin = pluginRegistry.getPluginsByCategory("logging")[0];
+  if (loggingPlugin) {
+    const loggingPluginApi = pluginRegistry.getPluginAPI(loggingPlugin.name);
+    if (loggingPluginApi && typeof loggingPluginApi === "object" && "logger" in loggingPluginApi) {
+      loggerService = loggingPluginApi.logger;
+      
+      // Apply monitoring log level if configured
+      if (config?.monitoring?.level && typeof loggerService.setLevel === "function") {
+        loggerService.setLevel(config.monitoring.level);
+        console.log(`✅ Set monitoring log level to: ${config.monitoring.level}`);
+      }
+    }
+  }
+  
+  // Get metrics service from metrics plugin
+  const metricsPlugin = pluginRegistry.getPluginsByCategory("observability")?.find(p => p.name.includes("metrics"));
+  if (metricsPlugin) {
+    const metricsPluginApi = pluginRegistry.getPluginAPI(metricsPlugin.name);
+    if (metricsPluginApi) {
+      metricsService = metricsPluginApi;
+      // Metrics plugin can also serve as monitoring service if it implements MonitoringHooks
+      if (typeof metricsPluginApi === "object" && ("onRequestStart" in metricsPluginApi || "onRequestEnd" in metricsPluginApi || "onError" in metricsPluginApi)) {
+        monitoringService = metricsPluginApi;
+      }
+      
+      // Register custom metrics if configured
+      if (config?.monitoring?.custom && Array.isArray(config.monitoring.custom)) {
+        for (const customMetric of config.monitoring.custom) {
+          try {
+            if (customMetric.type === "counter") {
+              metricsPluginApi.registerCounter(customMetric.name, []);
+            } else if (customMetric.type === "gauge") {
+              metricsPluginApi.registerGauge(customMetric.name, []);
+            } else if (customMetric.type === "histogram") {
+              metricsPluginApi.registerHistogram(customMetric.name, []);
+            }
+            console.log(`✅ Registered custom metric: ${customMetric.name} (${customMetric.type})`);
+          } catch (error) {
+            console.warn(`⚠️  Failed to register custom metric ${customMetric.name}:`, error instanceof Error ? error.message : String(error));
+          }
+        }
+      }
+    }
+  }
+  
+  // Get health service from health plugin
+  const healthPlugin = pluginRegistry.getPluginsByCategory("observability")?.find(p => p.name.includes("health"));
+  if (healthPlugin) {
+    const healthPluginApi = pluginRegistry.getPluginAPI(healthPlugin.name);
+    if (healthPluginApi) {
+      healthService = healthPluginApi;
+    }
+  }
+
+  // Auto-register monitoring endpoints if plugins are available
+  if (healthService) {
+    // Get health path from plugin API config, default to /_health
+    const healthPath = (healthService.getConfig && typeof healthService.getConfig === "function")
+      ? healthService.getConfig().path || "/_health"
+      : "/_health";
+    
+    serverAdapter.registerRoute(server, "GET", healthPath, async (request: HttpRequest, reply: HttpResponse) => {
+      try {
+        const healthStatus = await healthService.getHealth();
+        reply.status(healthStatus.status || (healthStatus.healthy ? 200 : 503)).send(healthStatus);
+      } catch (error) {
+        reply.status(503).send({
+          healthy: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+    console.log(`✅ Registered health endpoint: GET ${healthPath}`);
+  }
+  
+  if (metricsService) {
+    serverAdapter.registerRoute(server, "GET", "/_metrics", async (request: HttpRequest, reply: HttpResponse) => {
+      try {
+        const metrics = metricsService.export("prometheus");
+        reply.type("text/plain").send(metrics);
+      } catch (error) {
+        reply.status(500).send({
+          error: "Failed to export metrics",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+    console.log(`✅ Registered metrics endpoint: GET /_metrics`);
+  }
+
   // Load handlers and register routes
   if (config?.endpoints && handlersDir && serverAdapter && configDir) {
     const handlers = await loadHandlers(handlersDir, configDir);
@@ -2252,7 +2534,7 @@ export async function startYamaNodeRuntime(
         emailService = emailPluginApi.service;
       }
     }
-    registerRoutes(serverAdapter, server, config, handlers, validator, globalRateLimiter, repositories, dbAdapter || null, cacheAdapter || null, storageBuckets, realtimeAdapter || null, middlewareRegistry, emailService);
+    registerRoutes(serverAdapter, server, config, handlers, validator, globalRateLimiter, repositories, dbAdapter || null, cacheAdapter || null, storageBuckets, realtimeAdapter || null, middlewareRegistry, emailService, loggerService, metricsService, monitoringService);
   }
 
   // Call onStart lifecycle hooks for all plugins

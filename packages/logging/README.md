@@ -145,3 +145,4 @@ Structured JSON format:
 - Logger is registered as a service and accessible via `context.getService('logger')`
 - Logs are buffered/batched for performance in file and S3 transports
 
+

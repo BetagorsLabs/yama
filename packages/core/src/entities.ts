@@ -6,7 +6,14 @@ import type { SchemaField, SchemaDefinition, YamaSchemas } from "./schemas.js";
 export type EntityFieldType = "uuid" | "string" | "number" | "boolean" | "timestamp" | "text" | "jsonb" | "integer";
 
 /**
- * Entity field definition
+ * Entity field definition - shorthand syntax is the default
+ * Use object syntax only for advanced configuration (dbColumn, dbType, etc.)
+ */
+export type EntityFieldDefinition = string | EntityField;
+
+/**
+ * Entity field definition (parsed/normalized)
+ * Shorthand strings are parsed into this format
  */
 export interface EntityField {
   type: EntityFieldType;
@@ -30,6 +37,62 @@ export interface EntityField {
   max?: number;
   pattern?: string;
   enum?: unknown[];
+}
+
+/**
+ * Relation type definitions
+ */
+export type RelationType = 
+  | `hasMany(${string})` 
+  | `belongsTo(${string})` 
+  | `hasOne(${string})` 
+  | `manyToMany(${string})`;
+
+/**
+ * Relation definition
+ * Can be shorthand (e.g., "hasMany(Post)") or full object
+ */
+export type RelationDefinition = string | {
+  type: "hasMany" | "belongsTo" | "hasOne" | "manyToMany";
+  entity: string;
+  foreignKey?: string; // For belongsTo/hasMany
+  through?: string; // For manyToMany (junction table)
+  localKey?: string; // For manyToMany
+  foreignKeyTarget?: string; // For manyToMany
+};
+
+/**
+ * Validation rule
+ * Can be a string (e.g., "email", "unique", "minLength(2)") or an object
+ */
+export type ValidationRule = string | {
+  type: string;
+  value?: unknown;
+  message?: string;
+};
+
+/**
+ * Computed field definition
+ * Can be a string expression or an object with more options
+ */
+export type ComputedFieldDefinition = string | {
+  expression: string;
+  type?: EntityFieldType;
+  dependsOn?: string[]; // Fields this computed field depends on
+};
+
+/**
+ * Entity hooks
+ */
+export interface EntityHooks {
+  beforeCreate?: string; // Path to handler file
+  afterCreate?: string;
+  beforeUpdate?: string;
+  afterUpdate?: string;
+  beforeDelete?: string;
+  afterDelete?: string;
+  beforeSave?: string;
+  afterSave?: string;
 }
 
 /**
@@ -132,11 +195,17 @@ export interface CrudConfig {
 
 /**
  * Entity definition
+ * Supports both new syntax (with relations, validations, computed, hooks) and legacy syntax
  */
 export interface EntityDefinition {
   table: string; // Database table name
-  fields: Record<string, EntityField>;
+  fields: Record<string, EntityFieldDefinition>; // Supports shorthand syntax
+  relations?: Record<string, RelationDefinition>; // New: dedicated relations section
+  validations?: Record<string, ValidationRule[]>; // New: declarative validations
+  computed?: Record<string, ComputedFieldDefinition>; // New: computed fields
+  hooks?: EntityHooks; // New: lifecycle hooks
   indexes?: EntityIndex[];
+  softDelete?: boolean; // New: enable soft deletes
   apiSchema?: string; // Optional custom API schema name (default: entity name)
   crud?: boolean | CrudConfig; // Optional CRUD endpoint generation
 }
@@ -173,6 +242,164 @@ export interface DatabaseConfig {
 export interface ServerConfig {
   engine?: "fastify"; // Only fastify supported for now, defaults to "fastify"
   options?: Record<string, unknown>; // Engine-specific options
+}
+
+/**
+ * Parse shorthand field syntax (e.g., "string!", "string?", "enum[user, admin]")
+ * Optimized parser - assumes shorthand syntax by default
+ */
+export function parseFieldDefinition(
+  fieldName: string,
+  fieldDef: EntityFieldDefinition
+): EntityField {
+  // Fast path: already parsed
+  if (typeof fieldDef !== "string") {
+    return fieldDef;
+  }
+
+  const field: EntityField = { type: "string" };
+  const str = fieldDef.trim();
+
+  // Parse enum syntax: enum[value1, value2, ...]
+  const enumMatch = str.match(/^enum\[(.+)\]$/);
+  if (enumMatch) {
+    const enumValues = enumMatch[1]
+      .split(",")
+      .map((v) => v.trim().replace(/^["']|["']$/g, ""));
+    field.type = "string";
+    field.enum = enumValues;
+    return field;
+  }
+
+  // Parse type with modifiers: type! (required), type? (nullable)
+  let typeStr = str;
+  let required = false;
+  let nullable = false;
+
+  if (typeStr.endsWith("!")) {
+    required = true;
+    nullable = false;
+    typeStr = typeStr.slice(0, -1);
+  } else if (typeStr.endsWith("?")) {
+    required = false;
+    nullable = true;
+    typeStr = typeStr.slice(0, -1);
+  }
+
+  // Parse default value: type = value
+  const defaultMatch = typeStr.match(/^(.+?)\s*=\s*(.+)$/);
+  if (defaultMatch) {
+    typeStr = defaultMatch[1].trim();
+    const defaultValue = defaultMatch[2].trim();
+    
+    // Try to parse default value
+    if (defaultValue === "true" || defaultValue === "false") {
+      field.default = defaultValue === "true";
+    } else if (defaultValue === "now" || defaultValue === "now()") {
+      field.default = "now()";
+    } else if (!isNaN(Number(defaultValue)) && defaultValue !== "") {
+      field.default = Number(defaultValue);
+    } else {
+      // Remove quotes if present
+      field.default = defaultValue.replace(/^["']|["']$/g, "");
+    }
+  }
+
+  // Map type string to EntityFieldType
+  const typeMap: Record<string, EntityFieldType> = {
+    string: "string",
+    text: "text",
+    uuid: "uuid",
+    number: "number",
+    integer: "integer",
+    boolean: "boolean",
+    timestamp: "timestamp",
+    jsonb: "jsonb",
+  };
+
+  field.type = typeMap[typeStr.toLowerCase()] || "string";
+  field.required = required;
+  field.nullable = nullable;
+
+  return field;
+}
+
+/**
+ * Parse relation shorthand syntax - optimized for shorthand-first approach
+ */
+export function parseRelationDefinition(
+  relationDef: RelationDefinition
+): {
+  type: "hasMany" | "belongsTo" | "hasOne" | "manyToMany";
+  entity: string;
+  foreignKey?: string;
+  through?: string;
+  localKey?: string;
+  foreignKeyTarget?: string;
+} {
+  // Fast path: already parsed
+  if (typeof relationDef !== "string") {
+    return relationDef;
+  }
+
+  // Optimized regex for common patterns
+  const match = relationDef.match(/^(hasMany|belongsTo|hasOne|manyToMany)\((.+)\)$/);
+  if (!match) {
+    throw new Error(`Invalid relation syntax: ${relationDef}. Use: hasMany(Entity), belongsTo(Entity), hasOne(Entity), or manyToMany(Entity)`);
+  }
+
+  return {
+    type: match[1] as "hasMany" | "belongsTo" | "hasOne" | "manyToMany",
+    entity: match[2].trim(),
+  };
+}
+
+/**
+ * Normalize entity definition - optimized parser for shorthand-first syntax
+ * Parses fields and relations on-demand, caching results
+ */
+export function normalizeEntityDefinition(
+  entityName: string,
+  entityDef: EntityDefinition
+): Omit<EntityDefinition, "fields" | "relations"> & {
+  fields: Record<string, EntityField>;
+  relations?: Record<string, ReturnType<typeof parseRelationDefinition>>;
+} {
+  // Build normalized structure - only copy what we need
+  const normalized: Omit<EntityDefinition, "fields" | "relations"> & {
+    fields: Record<string, EntityField>;
+    relations?: Record<string, ReturnType<typeof parseRelationDefinition>>;
+  } = {
+    table: entityDef.table,
+    indexes: entityDef.indexes,
+    apiSchema: entityDef.apiSchema,
+    crud: entityDef.crud,
+    validations: entityDef.validations,
+    computed: entityDef.computed,
+    hooks: entityDef.hooks,
+    softDelete: entityDef.softDelete,
+    fields: {},
+  };
+
+  // Parse fields - optimized loop
+  const fieldEntries = Object.entries(entityDef.fields);
+  for (let i = 0; i < fieldEntries.length; i++) {
+    const [fieldName, fieldDef] = fieldEntries[i];
+    normalized.fields[fieldName] = parseFieldDefinition(fieldName, fieldDef);
+  }
+
+  // Parse relations if present - only if needed
+  if (entityDef.relations) {
+    const relationEntries = Object.entries(entityDef.relations);
+    const normalizedRelations: Record<string, ReturnType<typeof parseRelationDefinition>> = {};
+    for (let i = 0; i < relationEntries.length; i++) {
+      const [relationName, relationDef] = relationEntries[i];
+      normalizedRelations[relationName] = parseRelationDefinition(relationDef);
+    }
+    normalized.relations = normalizedRelations;
+  }
+
+  return normalized;
 }
 
 /**
@@ -274,33 +501,43 @@ function entityFieldToSchemaField(
 
 /**
  * Convert entity definition to API schema definition
+ * Optimized - normalizes once and processes fields efficiently
  */
 export function entityToSchema(
   entityName: string,
   entityDef: EntityDefinition,
   entities?: YamaEntities
 ): SchemaDefinition {
+  // Normalize once - all fields become EntityField objects
+  const normalized = normalizeEntityDefinition(entityName, entityDef);
   const schemaFields: Record<string, SchemaField> = {};
+  const fieldEntries = Object.entries(normalized.fields);
 
-  for (const [fieldName, entityField] of Object.entries(entityDef.fields)) {
+  // Process fields - optimized loop
+  for (let i = 0; i < fieldEntries.length; i++) {
+    const [fieldName, entityField] = fieldEntries[i];
     const result = entityFieldToSchemaField(fieldName, entityField);
     if (result) {
       schemaFields[result.apiFieldName] = result.schemaField;
     }
   }
 
-  return {
-    fields: schemaFields,
-  };
+  // Computed fields are runtime-only, not in schema
+  // They would be resolved dynamically when fetching entities
+
+  return { fields: schemaFields };
 }
 
 /**
- * Convert all entities to schemas
+ * Convert all entities to schemas - optimized batch processing
  */
 export function entitiesToSchemas(entities: YamaEntities): YamaSchemas {
   const schemas: YamaSchemas = {};
+  const entityEntries = Object.entries(entities);
 
-  for (const [entityName, entityDef] of Object.entries(entities)) {
+  // Process all entities in one pass
+  for (let i = 0; i < entityEntries.length; i++) {
+    const [entityName, entityDef] = entityEntries[i];
     const schemaName = entityDef.apiSchema || entityName;
     schemas[schemaName] = entityToSchema(entityName, entityDef, entities);
   }

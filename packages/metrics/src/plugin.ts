@@ -3,6 +3,11 @@ import type {
   PluginContext,
   PluginMetrics,
   SummaryStats,
+  MonitoringHooks,
+  HttpRequest,
+  HttpResponse,
+  HandlerContext,
+  ErrorContext,
 } from "@betagors/yama-core";
 import {
   pluginMetricsCollector,
@@ -24,9 +29,9 @@ import {
 import { createAutoInstrumenter } from "./auto-instrument.js";
 
 /**
- * Metrics plugin API
+ * Metrics plugin API (extends MonitoringHooks)
  */
-export interface MetricsPluginAPI {
+export interface MetricsPluginAPI extends MonitoringHooks {
   /**
    * Get plugin lifecycle metrics
    */
@@ -98,6 +103,11 @@ const plugin: YamaPlugin = {
 
     // Create metric registry
     const registry = new MetricRegistry();
+
+    // Register default HTTP metrics (store references for use in MonitoringHooks)
+    const httpRequestsCounter = registry.registerCounter("http_requests", ["method", "path", "status"]);
+    const httpRequestDurationHistogram = registry.registerHistogram("http_request_duration_ms", ["method", "path"]);
+    const httpErrorsCounter = registry.registerCounter("http_errors", ["method", "path", "error_type"]);
 
     // Create exporters
     const exporters = new Map<string, MetricsExporter>([
@@ -178,11 +188,55 @@ const plugin: YamaPlugin = {
       autoInstrument(pluginName: string, api: any): any {
         return autoInstrument(pluginName, api);
       },
+
+      // MonitoringHooks implementation
+      onRequestStart(req: HttpRequest, context: HandlerContext): void {
+        // Request start tracking can be added here if needed
+        // For now, we rely on onRequestEnd for metrics
+      },
+
+      onRequestEnd(
+        req: HttpRequest,
+        res: HttpResponse,
+        duration: number,
+        context: HandlerContext
+      ): void {
+        // Get status code from response (may need to be extracted from reply object)
+        const statusCode = (res as any).statusCode || (context._statusCode || 200);
+        
+        // Record HTTP request metrics
+        httpRequestsCounter.inc({
+          method: req.method,
+          path: req.path,
+          status: statusCode.toString(),
+        });
+        
+        // Record request duration in milliseconds
+        httpRequestDurationHistogram.observe(duration, {
+          method: req.method,
+          path: req.path,
+        });
+      },
+
+      onError(error: Error, errorContext: ErrorContext): void {
+        const method = errorContext.request?.method || "UNKNOWN";
+        const path = errorContext.request?.path || "UNKNOWN";
+        const errorType = error.constructor.name || "Error";
+        
+        // Record error metric
+        httpErrorsCounter.inc({
+          method,
+          path,
+          error_type: errorType,
+        });
+      },
     };
 
     // Register as metrics service
     context.registerService("metrics", api);
-    context.logger.info("Metrics service registered");
+    // Also register as monitoring service to receive hooks
+    context.registerService("monitoring", api);
+    context.logger.info("Metrics service registered (also available as monitoring service)");
 
     return api;
   },

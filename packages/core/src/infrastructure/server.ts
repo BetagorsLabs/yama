@@ -158,9 +158,48 @@ export interface HandlerContext {
     readonly available: boolean;
   };
   logger?: {
-    info(message: string): void;
-    warn(message: string): void;
-    error(message: string): void;
+    /**
+     * Log an info message with optional metadata
+     */
+    info(message: string, meta?: Record<string, unknown>): void;
+    /**
+     * Log a warning message with optional metadata
+     */
+    warn(message: string, meta?: Record<string, unknown>): void;
+    /**
+     * Log an error message with optional error and metadata
+     */
+    error(message: string, error?: Error, meta?: Record<string, unknown>): void;
+    /**
+     * Log a debug message with optional metadata
+     */
+    debug(message: string, meta?: Record<string, unknown>): void;
+  };
+  
+  metrics?: {
+    /**
+     * Increment a counter metric
+     */
+    increment(name: string, value?: number, tags?: Record<string, string>): void;
+    /**
+     * Record a histogram value
+     */
+    histogram(name: string, value: number, tags?: Record<string, string>): void;
+    /**
+     * Set a gauge value
+     */
+    gauge(name: string, value: number, tags?: Record<string, string>): void;
+  };
+  
+  tracing?: {
+    /**
+     * Start a trace span (for future tracing support)
+     */
+    startSpan(name: string): TraceSpan;
+    /**
+     * Get the current active span
+     */
+    getCurrentSpan(): TraceSpan | undefined;
   };
   
   // Original request/reply for edge cases
@@ -173,6 +212,24 @@ export interface HandlerContext {
   _statusCode?: number;
   
   [key: string]: unknown; // Allow additional properties
+}
+
+/**
+ * Trace span interface (for future tracing support)
+ */
+export interface TraceSpan {
+  /**
+   * Set a tag on the span
+   */
+  setTag(key: string, value: string | number | boolean): void;
+  /**
+   * Add an event to the span
+   */
+  addEvent(name: string, attributes?: Record<string, unknown>): void;
+  /**
+   * Finish the span
+   */
+  finish(): void;
 }
 
 /**

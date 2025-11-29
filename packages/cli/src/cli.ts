@@ -19,9 +19,11 @@ import { schemaFixCommand } from "./commands/schema-fix.ts";
 import { schemaEnvCommand } from "./commands/schema-env.ts";
 import { schemaTrashCommand } from "./commands/schema-trash.ts";
 import { schemaRestoreCommand } from "./commands/schema-restore.ts";
+import { schemaRollbackCommand } from "./commands/schema-rollback.ts";
 import { pluginListCommand, pluginInstallCommand, pluginValidateCommand } from "./commands/plugin.ts";
 import { pluginMigrateCommand } from "./commands/plugin-migrate.ts";
 import { pluginRollbackCommand } from "./commands/plugin-rollback.ts";
+import { migrationCreateCommand } from "./commands/migration-create.ts";
 import { pluginStatusCommand } from "./commands/plugin-status.ts";
 import { pluginHealthCommand } from "./commands/plugin-health.ts";
 import { pluginSearchCommand } from "./commands/plugin-search.ts";
@@ -38,6 +40,11 @@ import { addHandlerCommand } from "./commands/add-handler.ts";
 import { addPluginCommand } from "./commands/add-plugin.ts";
 import { removePluginCommand } from "./commands/remove-plugin.ts";
 import { syncPluginsCommand } from "./commands/sync-plugins.ts";
+import { snapshotListCommand } from "./commands/snapshot-list.ts";
+import { snapshotCreateCommand } from "./commands/snapshot-create.ts";
+import { transitionCreateCommand } from "./commands/transition-create.ts";
+import { resolveCommand } from "./commands/resolve.ts";
+import { ciAnalyzeCommand, ciValidateCommand } from "./commands/ci.ts";
 
 const program = new Command();
 
@@ -266,6 +273,20 @@ program
   .action(schemaHistoryCommand);
 
 program
+  .command("schema:rollback")
+  .description("Rollback applied migrations")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("--steps <number>", "Number of migrations to rollback (default: 1)")
+  .option("--to <migration>", "Rollback to a specific migration name")
+  .option("--dry-run", "Show what would be rolled back without executing")
+  .option("--env <env>", "Environment (local, staging, prod)", "local")
+  .option("--force", "Skip confirmation prompts and safety checks (use with extreme caution)")
+  .option("--skip-confirm", "Skip confirmation prompts")
+  .action(async (options) => {
+    await schemaRollbackCommand(options);
+  });
+
+program
   .command("schema:scaffold")
   .description("Scaffold schema changes")
   .argument("<action>", "Action: add-table or add-column")
@@ -312,6 +333,18 @@ program
   .option("--table <table>", "Target table name")
   .action(schemaRestoreCommand);
 
+program
+  .command("migration:create")
+  .alias("migrate:create")
+  .description("Create a new custom migration file")
+  .option("-n, --name <name>", "Migration name")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("--type <type>", "Migration type (schema, data, custom)", "schema")
+  .option("--template <template>", "Template to use (empty, table, column, index)", "empty")
+  .action(async (options) => {
+    await migrationCreateCommand(options);
+  });
+
 // Service plugins
 const pluginCommand = program
   .command("plugin")
@@ -343,6 +376,9 @@ pluginCommand
   .option("--dry-run", "Show what would be migrated without executing")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .option("--env <env>", "Environment (development, production, etc.)", "development")
+  .option("--force", "Skip confirmation prompts (use with caution)")
+  .option("--skip-confirm", "Skip confirmation prompts")
+  .option("--interactive", "Prompt before applying each plugin's migrations")
   .action(async (options) => {
     await pluginMigrateCommand(options);
   });
@@ -350,13 +386,33 @@ pluginCommand
 pluginCommand
   .command("rollback")
   .description("Rollback plugin migrations")
-  .argument("<plugin>", "Plugin name to rollback")
-  .argument("<version>", "Target version to rollback to")
+  .argument("[plugin]", "Plugin name to rollback")
+  .option("--to-version <version>", "Target version to rollback to")
+  .option("--steps <number>", "Number of migrations to rollback")
   .option("--dry-run", "Show what would be rolled back without executing")
   .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
   .option("--env <env>", "Environment (development, production, etc.)", "development")
-  .action(async (pluginName, version, options) => {
-    await pluginRollbackCommand(pluginName, { ...options, toVersion: version });
+  .option("--force", "Skip confirmation prompts and safety checks (use with extreme caution)")
+  .option("--skip-confirm", "Skip confirmation prompts")
+  .action(async (pluginName, options) => {
+    if (!pluginName) {
+      console.error("Error: Plugin name is required");
+      console.error("Usage: yama plugin rollback <plugin> [--to-version <version> | --steps <number>]");
+      process.exit(1);
+    }
+    if (!options.toVersion && !options.steps) {
+      console.error("Error: Either --to-version or --steps must be specified");
+      process.exit(1);
+    }
+    // Parse steps as number if provided
+    if (options.steps) {
+      options.steps = parseInt(options.steps as string, 10);
+      if (isNaN(options.steps)) {
+        console.error("Error: --steps must be a valid number");
+        process.exit(1);
+      }
+    }
+    await pluginRollbackCommand(pluginName, options);
   });
 
 pluginCommand
@@ -441,6 +497,81 @@ dbCommand
   .option("--env <env>", "Environment", "development")
   .action(async (table, options) => {
     await dbInspectCommand(table, options);
+  });
+
+// Snapshot commands
+const snapshotCommand = program
+  .command("snapshot")
+  .description("Manage schema snapshots");
+
+snapshotCommand
+  .command("list")
+  .description("List all snapshots")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .action(async (options) => {
+    await snapshotListCommand(options);
+  });
+
+snapshotCommand
+  .command("create")
+  .description("Create a new snapshot")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("-d, --description <description>", "Snapshot description")
+  .option("--env <env>", "Environment", "development")
+  .action(async (options) => {
+    await snapshotCreateCommand(options);
+  });
+
+// Transition commands
+const transitionCommand = program
+  .command("transition")
+  .description("Manage transitions between snapshots");
+
+transitionCommand
+  .command("create")
+  .description("Create a transition between snapshots")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("--from <hash>", "Source snapshot hash")
+  .option("--to <hash>", "Target snapshot hash")
+  .option("-d, --description <description>", "Transition description")
+  .action(async (options) => {
+    await transitionCreateCommand(options);
+  });
+
+// Resolve command
+program
+  .command("resolve")
+  .description("Resolve schema merge conflicts")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("--base <hash>", "Base snapshot hash")
+  .option("--local <hash>", "Local snapshot hash")
+  .option("--remote <hash>", "Remote snapshot hash")
+  .action(async (options) => {
+    await resolveCommand(options);
+  });
+
+// CI/CD commands
+const ciCommand = program
+  .command("ci")
+  .description("CI/CD integration commands");
+
+ciCommand
+  .command("analyze")
+  .description("Analyze schema changes for CI/CD")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .option("--from <hash>", "Source snapshot hash")
+  .option("--to <hash>", "Target snapshot hash")
+  .option("--output <format>", "Output format (json, text)", "text")
+  .action(async (options) => {
+    await ciAnalyzeCommand(options);
+  });
+
+ciCommand
+  .command("validate")
+  .description("Validate configuration")
+  .option("-c, --config <path>", "Path to yama.yaml", "yama.yaml")
+  .action(async (options) => {
+    await ciValidateCommand(options);
   });
 
 program.parse();

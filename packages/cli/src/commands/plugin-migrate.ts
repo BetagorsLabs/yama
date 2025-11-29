@@ -1,8 +1,9 @@
 import { existsSync } from "fs";
 import { findYamaConfig } from "../utils/project-detection.ts";
 import { getConfigDir, readYamaConfig, resolveEnvVars, loadEnvFile } from "../utils/file-utils.ts";
-import { success, error, info, warning } from "../utils/cli-utils.ts";
+import { success, error, info, warning, printBox } from "../utils/cli-utils.ts";
 import { getDatabasePlugin } from "../utils/db-plugin.ts";
+import { confirm } from "../utils/interactive.ts";
 import {
   loadPlugin,
   getAllPlugins,
@@ -27,6 +28,9 @@ interface PluginMigrateOptions {
   dryRun?: boolean;
   config?: string;
   env?: string;
+  force?: boolean;
+  skipConfirm?: boolean;
+  interactive?: boolean;
 }
 
 export async function pluginMigrateCommand(
@@ -49,6 +53,26 @@ export async function pluginMigrateCommand(
     };
     config = resolveEnvVars(config) as typeof config;
     const configDir = getConfigDir(configPath);
+
+    // Safety check: production environment warning
+    const isProduction = environment === "production" || environment === "prod";
+    if (isProduction && !options.force && !options.dryRun) {
+      warning("⚠️  WARNING: You are about to run migrations in PRODUCTION!");
+      warning("   This operation will modify your production database.");
+      warning("   Consider testing migrations in staging first.");
+      console.log();
+      
+      if (!options.skipConfirm) {
+        const confirmed = await confirm(
+          "Are you absolutely sure you want to continue?",
+          false
+        );
+        if (!confirmed) {
+          info("Migration cancelled.");
+          return;
+        }
+      }
+    }
 
     // Get database plugin
     let dbPlugin;
@@ -149,6 +173,19 @@ export async function pluginMigrateCommand(
           continue;
         }
 
+        // Interactive confirmation for each plugin
+        if (options.interactive && !options.skipConfirm) {
+          const confirmed = await confirm(
+            `Apply ${plan.migrations.length} migration(s) for ${pluginName}?`,
+            true
+          );
+          if (!confirmed) {
+            warning(`Skipping migrations for ${pluginName}`);
+            skippedCount++;
+            continue;
+          }
+        }
+
         // Get plugin directory
         const pluginDir = await getPluginPackageDir(pluginName, configDir);
 
@@ -192,6 +229,15 @@ export async function pluginMigrateCommand(
             error(
               `Migration failed for ${pluginName} from ${migration.fromVersion} to ${migration.toVersion}: ${errorMsg}`
             );
+            
+            // Provide helpful error recovery tips
+            console.log("\n💡 Recovery Tips:");
+            console.log("   1. Check the error message above for details");
+            console.log("   2. Verify your database connection and permissions");
+            console.log("   3. Review the migration script for syntax errors");
+            console.log("   4. Check if the database is in a consistent state");
+            console.log("   5. Consider rolling back if needed: yama plugin rollback <plugin> --steps 1");
+            
             throw err; // Stop on error
           }
         }

@@ -58,3 +58,4 @@ export function formatLogEntry(entry: LogEntry, format: "json" | "text"): string
   return format === "json" ? formatJSON(entry) : formatText(entry);
 }
 
+

@@ -4,12 +4,29 @@ Entities represent database tables and provide automatic CRUD operations. They'r
 
 ## Basic Entity Definition
 
+YAMA supports both shorthand and full object syntax for defining entities. The shorthand syntax is cleaner and more concise:
+
 ```yaml
 entities:
   Todo:
     table: todos                    # Database table name
     crud:
       enabled: true                 # Enable automatic CRUD endpoints
+    fields:
+      id: uuid!                     # Shorthand: uuid! = required uuid
+      title: string!                # Shorthand: string! = required string
+      completed: boolean = false    # Shorthand: boolean with default value
+      createdAt: timestamp          # Shorthand: timestamp (auto-populated)
+```
+
+You can also use the full object syntax for more control:
+
+```yaml
+entities:
+  Todo:
+    table: todos
+    crud:
+      enabled: true
     fields:
       id:
         type: uuid
@@ -28,7 +45,35 @@ entities:
 
 ## Entity Fields
 
-Entity fields map to database columns:
+Entity fields map to database columns. YAMA supports shorthand syntax for cleaner definitions:
+
+### Shorthand Syntax
+
+```yaml
+entities:
+  User:
+    table: users
+    fields:
+      id: uuid!                      # ! = required
+      email: string!                 # Required string
+      name: string?                  # ? = nullable
+      avatarUrl: string?             # Nullable string
+      role: enum[user, admin]        # Enum shorthand
+      age: integer = 0               # Default value
+      createdAt: timestamp           # Auto-populated
+      published: boolean = false     # Boolean with default
+```
+
+### Field Modifiers
+
+- `type!` - Required field (e.g., `string!`, `uuid!`)
+- `type?` - Nullable field (e.g., `string?`, `integer?`)
+- `enum[val1, val2]` - Enum type with values
+- `type = value` - Default value (e.g., `boolean = false`, `integer = 0`)
+
+### Full Object Syntax
+
+For advanced configuration, use the full object syntax:
 
 ```yaml
 entities:
@@ -108,21 +153,165 @@ entities:
 
 ## Relations
 
-Define relationships between entities (coming soon):
+Define relationships between entities using the dedicated `relations` section:
+
+```yaml
+entities:
+  User:
+    table: users
+    fields:
+      id: uuid!
+      email: string!
+      name: string!
+    relations:
+      posts: hasMany(Post)           # One-to-many
+      profile: hasOne(Profile)        # One-to-one
+
+  Post:
+    table: posts
+    fields:
+      id: uuid!
+      title: string!
+      content: text!
+      authorId: uuid!                 # Foreign key
+    relations:
+      author: belongsTo(User)         # Many-to-one
+      comments: hasMany(Comment)       # One-to-many
+      tags: manyToMany(Tag)           # Many-to-many
+
+  Comment:
+    table: comments
+    fields:
+      id: uuid!
+      content: text!
+      postId: uuid!
+      userId: uuid!
+    relations:
+      post: belongsTo(Post)
+      user: belongsTo(User)
+
+  Tag:
+    table: tags
+    fields:
+      id: uuid!
+      name: string!
+    relations:
+      posts: manyToMany(Post)
+```
+
+### Relation Types
+
+- `hasMany(Entity)` - One-to-many relationship
+- `belongsTo(Entity)` - Many-to-one relationship  
+- `hasOne(Entity)` - One-to-one relationship
+- `manyToMany(Entity)` - Many-to-many relationship
+
+### Advanced Relation Configuration
+
+For more control, use the full object syntax:
+
+```yaml
+entities:
+  Post:
+    relations:
+      author:
+        type: belongsTo
+        entity: User
+        foreignKey: authorId
+      tags:
+        type: manyToMany
+        entity: Tag
+        through: post_tags
+        localKey: postId
+        foreignKeyTarget: tagId
+```
+
+## Validations
+
+Define field validations declaratively in a separate `validations` section:
+
+```yaml
+entities:
+  User:
+    table: users
+    fields:
+      email: string!
+      name: string!
+      avatarUrl: string?
+    validations:
+      email: [email, unique]                    # Email format + unique constraint
+      name: [minLength(2), maxLength(100)]      # Length validation
+      avatarUrl: [url]                          # URL format validation
+```
+
+### Validation Rules
+
+Common validation rules:
+- `email` - Email format validation
+- `unique` - Unique constraint
+- `minLength(n)` - Minimum length
+- `maxLength(n)` - Maximum length
+- `min(n)` - Minimum numeric value
+- `max(n)` - Maximum numeric value
+- `url` - URL format validation
+- `slug` - Slug format validation
+
+## Computed Fields
+
+Define virtual fields calculated from other fields:
+
+```yaml
+entities:
+  User:
+    table: users
+    fields:
+      firstName: string!
+      lastName: string!
+    computed:
+      fullName: "{firstName} {lastName}"        # String concatenation
+      postCount: "count(posts)"                  # Count related records
+```
+
+## Hooks
+
+Define lifecycle hooks for custom logic:
+
+```yaml
+entities:
+  User:
+    table: users
+    fields:
+      email: string!
+      name: string!
+    hooks:
+      beforeCreate: ./hooks/user.beforeCreate.ts
+      afterCreate: ./hooks/user.afterCreate.ts
+      beforeUpdate: ./hooks/user.beforeUpdate.ts
+      afterDelete: ./hooks/user.afterDelete.ts
+```
+
+Available hooks:
+- `beforeCreate` - Before creating a new record
+- `afterCreate` - After creating a new record
+- `beforeUpdate` - Before updating a record
+- `afterUpdate` - After updating a record
+- `beforeDelete` - Before deleting a record
+- `afterDelete` - After deleting a record
+- `beforeSave` - Before saving (create or update)
+- `afterSave` - After saving (create or update)
+
+## Soft Deletes
+
+Enable soft deletes to mark records as deleted instead of removing them:
 
 ```yaml
 entities:
   Post:
     table: posts
+    softDelete: true                 # Adds deletedAt timestamp
     fields:
-      id:
-        type: uuid
-        primary: true
-      authorId:
-        type: uuid
-        relation:
-          entity: User
-          field: id
+      id: uuid!
+      title: string!
 ```
 
 ## Next Steps

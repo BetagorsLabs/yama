@@ -1,6 +1,6 @@
-import type { EntityDefinition, YamaEntities, CrudConfig } from "./entities.js";
+import type { EntityDefinition, YamaEntities, CrudConfig, EntityField } from "./entities.js";
 import type { SchemaField } from "./schemas.js";
-import { entityToSchema } from "./entities.js";
+import { entityToSchema, normalizeEntityDefinition, parseFieldDefinition } from "./entities.js";
 import type { PaginationConfig } from "./pagination/types.js";
 
 /**
@@ -51,18 +51,20 @@ function entityNameToPath(entityName: string, customPath?: string): string {
 }
 
 /**
- * Get primary key field name from entity
+ * Get primary key field name - optimized with early return
  */
-function getPrimaryKeyField(entityDef: EntityDefinition): string {
-  for (const [fieldName, field] of Object.entries(entityDef.fields)) {
+function getPrimaryKeyField(entityDef: EntityDefinition, entityName: string): string {
+  const normalized = normalizeEntityDefinition(entityName, entityDef);
+  const fieldEntries = Object.entries(normalized.fields);
+  
+  // Early return on first primary key found
+  for (let i = 0; i < fieldEntries.length; i++) {
+    const [fieldName, field] = fieldEntries[i];
     if (field.primary) {
-      // Return API field name if available
-      if (field.api && typeof field.api === "string") {
-        return field.api;
-      }
-      return fieldName;
+      return (field.api && typeof field.api === "string") ? field.api : fieldName;
     }
   }
+  
   return "id"; // Default fallback
 }
 
@@ -81,21 +83,29 @@ function generateArraySchemaName(entityName: string): string {
 }
 
 /**
- * Get all searchable fields from entity (string/text fields)
+ * Get all searchable fields - optimized with pre-allocated array
  */
-function getAllSearchableFields(entityDef: EntityDefinition): string[] {
+function getAllSearchableFields(entityDef: EntityDefinition, entityName: string): string[] {
+  const normalized = normalizeEntityDefinition(entityName, entityDef);
   const searchable: string[] = [];
-  for (const [fieldName, field] of Object.entries(entityDef.fields)) {
-    if (field.api !== false && (field.type === "string" || field.type === "text")) {
-      // Get API field name
-      const apiFieldName = field.api && typeof field.api === "string"
-        ? field.api
-        : field.dbColumn
-        ? field.dbColumn.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
-        : fieldName;
-      searchable.push(apiFieldName);
-    }
+  const fieldEntries = Object.entries(normalized.fields);
+  
+  // Pre-filter searchable types
+  for (let i = 0; i < fieldEntries.length; i++) {
+    const [fieldName, field] = fieldEntries[i];
+    if (field.api === false) continue;
+    if (field.type !== "string" && field.type !== "text") continue;
+    
+    // Resolve API field name efficiently
+    const apiFieldName = field.api && typeof field.api === "string"
+      ? field.api
+      : field.dbColumn
+      ? field.dbColumn.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase())
+      : fieldName;
+    
+    searchable.push(apiFieldName);
   }
+  
   return searchable;
 }
 
@@ -105,6 +115,7 @@ function getAllSearchableFields(entityDef: EntityDefinition): string[] {
  */
 function getSearchableFields(
   entityDef: EntityDefinition,
+  entityName: string,
   searchConfig?: CrudConfig["search"]
 ): string[] {
   // Handle simplified syntax: boolean
@@ -113,7 +124,7 @@ function getSearchableFields(
       return []; // Explicitly disabled
     }
     // true - use all searchable fields
-    return getAllSearchableFields(entityDef);
+    return getAllSearchableFields(entityDef, entityName);
   }
 
   // Handle simplified syntax: array of field names
@@ -129,13 +140,13 @@ function getSearchableFields(
         return searchConfig.fields;
       }
       if (searchConfig.fields === true) {
-        return getAllSearchableFields(entityDef);
+        return getAllSearchableFields(entityDef, entityName);
       }
     }
   }
 
   // Default: return all string/text fields (auto-enabled)
-  return getAllSearchableFields(entityDef);
+  return getAllSearchableFields(entityDef, entityName);
 }
 
 /**
@@ -144,11 +155,12 @@ function getSearchableFields(
  */
 function shouldEnableSearch(
   entityDef: EntityDefinition,
+  entityName: string,
   crudConfig?: CrudConfig | boolean
 ): boolean {
   // If CRUD is not enabled or is a boolean, check if entity has searchable fields
   if (!crudConfig || typeof crudConfig === "boolean") {
-    return getAllSearchableFields(entityDef).length > 0;
+    return getAllSearchableFields(entityDef, entityName).length > 0;
   }
 
   // Check search config
@@ -165,14 +177,14 @@ function shouldEnableSearch(
   }
 
   // Auto-enable if entity has searchable fields
-  return getAllSearchableFields(entityDef).length > 0;
+  return getAllSearchableFields(entityDef, entityName).length > 0;
 }
 
 /**
  * Get search mode from config (default: "contains")
  */
 function getSearchMode(searchConfig?: CrudConfig["search"]): "contains" | "starts" | "ends" | "exact" {
-  if (searchConfig && typeof searchConfig === "object" && searchConfig.mode) {
+  if (searchConfig && typeof searchConfig === "object" && !Array.isArray(searchConfig) && searchConfig.mode) {
     return searchConfig.mode;
   }
   return "contains";
@@ -182,7 +194,7 @@ function getSearchMode(searchConfig?: CrudConfig["search"]): "contains" | "start
  * Check if full-text search should be enabled (default: true)
  */
 function shouldEnableFullText(searchConfig?: CrudConfig["search"]): boolean {
-  if (searchConfig && typeof searchConfig === "object") {
+  if (searchConfig && typeof searchConfig === "object" && !Array.isArray(searchConfig)) {
     return searchConfig.fullText !== false; // Default to true unless explicitly false
   }
   return true; // Default enabled
@@ -366,7 +378,7 @@ export function generateCrudEndpoints(
     typeof crudConfig === "object" ? crudConfig.path : undefined
   );
   const schemaName = entityDef.apiSchema || entityName;
-  const primaryKey = getPrimaryKeyField(entityDef);
+  const primaryKey = getPrimaryKeyField(entityDef, entityName);
   const createInputName = generateInputSchemaName(schemaName, "Create");
   const updateInputName = generateInputSchemaName(schemaName, "Update");
   const arraySchemaName = generateArraySchemaName(schemaName);
@@ -407,7 +419,7 @@ export function generateCrudEndpoints(
     }
 
     // Auto-enable search if entity has searchable fields (smart defaults)
-    const searchEnabled = shouldEnableSearch(entityDef, crudConfig);
+    const searchEnabled = shouldEnableSearch(entityDef, entityName, crudConfig);
     if (searchEnabled) {
       const searchConfig = typeof crudConfig === "object" ? crudConfig.search : undefined;
       // Add full-text search parameter (enabled by default)
@@ -558,11 +570,14 @@ export function generateCrudInputSchemas(
 
   // Get the base schema
   const baseSchema = entityToSchema(entityName, entityDef);
+  
+  // Normalize entity definition to handle shorthand syntax
+  const normalized = normalizeEntityDefinition(entityName, entityDef);
 
   // Create input: exclude primary key and generated fields
   // Use the base schema fields directly (they already have correct API field names)
   const createFields: Record<string, SchemaField> = {};
-  for (const [fieldName, field] of Object.entries(entityDef.fields)) {
+  for (const [fieldName, field] of Object.entries(normalized.fields)) {
     // Skip primary key and generated fields for create
     if (field.primary || field.generated) {
       continue;
@@ -588,7 +603,7 @@ export function generateCrudInputSchemas(
 
   // Update input: all fields optional except primary key
   const updateFields: Record<string, SchemaField> = {};
-  for (const [fieldName, field] of Object.entries(entityDef.fields)) {
+  for (const [fieldName, field] of Object.entries(normalized.fields)) {
     // Skip primary key for update (it's in the path)
     if (field.primary) {
       continue;

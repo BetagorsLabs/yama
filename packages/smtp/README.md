@@ -90,3 +90,4 @@ await context.email?.sendBatch([
 - ✅ TLS/SSL support
 - ✅ Multiple recipients (to, cc, bcc)
 
+

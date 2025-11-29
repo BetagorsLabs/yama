@@ -359,6 +359,58 @@
         }
       }
     },
+    "monitoring": {
+      "type": "object",
+      "description": "Monitoring and observability configuration",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "description": "Log level for monitoring (default: 'info')"
+        },
+        "sampling": {
+          "type": "object",
+          "description": "Sampling configuration for high-traffic applications",
+          "properties": {
+            "rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Sample rate for requests (0-1, e.g., 0.1 = 10% of requests)"
+            },
+            "errors": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Sample rate for errors (usually 1.0 to always track errors)"
+            }
+          }
+        },
+        "custom": {
+          "type": "array",
+          "description": "Custom metrics to register",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Metric name"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["counter", "gauge", "histogram"],
+                "description": "Metric type"
+              },
+              "description": {
+                "type": "string",
+                "description": "Metric description"
+              }
+            },
+            "required": ["name", "type"]
+          }
+        }
+      }
+    },
     "entities": {
       "type": "object",
       "description": "Entity definitions (database models)",
@@ -371,15 +423,21 @@
           },
           "fields": {
             "type": "object",
-            "description": "Entity fields",
+            "description": "Entity fields. Supports shorthand syntax (e.g., 'string!', 'string?', 'enum[user, admin]') or full object syntax.",
             "additionalProperties": {
-              "type": "object",
-              "properties": {
-                "type": {
+              "oneOf": [
+                {
                   "type": "string",
-                  "enum": ["uuid", "string", "number", "boolean", "timestamp", "text", "jsonb", "integer"],
-                  "description": "Field type"
+                  "description": "Shorthand syntax: 'type!' (required), 'type?' (nullable), 'enum[val1, val2]', 'type = default'"
                 },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["uuid", "string", "number", "boolean", "timestamp", "text", "jsonb", "integer"],
+                      "description": "Field type"
+                    },
                 "dbType": {
                   "type": "string",
                   "description": "PostgreSQL-specific type override (e.g., 'varchar(255)')"
@@ -452,7 +510,154 @@
                 }
               },
               "required": ["type"]
+                }
+              ]
             }
+          },
+          "relations": {
+            "type": "object",
+            "description": "Entity relationships. Supports shorthand syntax (e.g., 'hasMany(Post)', 'belongsTo(User)') or full object syntax.",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(hasMany|belongsTo|hasOne|manyToMany)\\(.+?\\)$",
+                  "description": "Shorthand relation syntax: hasMany(Entity), belongsTo(Entity), hasOne(Entity), manyToMany(Entity)"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["hasMany", "belongsTo", "hasOne", "manyToMany"],
+                      "description": "Relation type"
+                    },
+                    "entity": {
+                      "type": "string",
+                      "description": "Target entity name"
+                    },
+                    "foreignKey": {
+                      "type": "string",
+                      "description": "Foreign key field name (for belongsTo/hasMany)"
+                    },
+                    "through": {
+                      "type": "string",
+                      "description": "Junction table name (for manyToMany)"
+                    },
+                    "localKey": {
+                      "type": "string",
+                      "description": "Local key field (for manyToMany)"
+                    },
+                    "foreignKeyTarget": {
+                      "type": "string",
+                      "description": "Foreign key target field (for manyToMany)"
+                    }
+                  },
+                  "required": ["type", "entity"]
+                }
+              ]
+            }
+          },
+          "validations": {
+            "type": "object",
+            "description": "Field validations (declarative). Maps field names to validation rules.",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "description": "Validation rule shorthand: 'email', 'unique', 'minLength(2)', 'maxLength(100)', etc."
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "description": "Validation rule type"
+                      },
+                      "value": {
+                        "description": "Validation rule value"
+                      },
+                      "message": {
+                        "type": "string",
+                        "description": "Custom error message"
+                      }
+                    },
+                    "required": ["type"]
+                  }
+                ]
+              }
+            }
+          },
+          "computed": {
+            "type": "object",
+            "description": "Computed fields (virtual fields calculated from other fields)",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "description": "Computed field expression (e.g., '{firstName} {lastName}', 'count(posts)')"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string",
+                      "description": "Computed field expression"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["uuid", "string", "number", "boolean", "timestamp", "text", "jsonb", "integer"],
+                      "description": "Computed field type"
+                    },
+                    "dependsOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Fields this computed field depends on"
+                    }
+                  },
+                  "required": ["expression"]
+                }
+              ]
+            }
+          },
+          "hooks": {
+            "type": "object",
+            "description": "Entity lifecycle hooks (paths to handler files)",
+            "properties": {
+              "beforeCreate": {
+                "type": "string",
+                "description": "Path to handler file (e.g., './hooks/user.beforeCreate.ts')"
+              },
+              "afterCreate": {
+                "type": "string"
+              },
+              "beforeUpdate": {
+                "type": "string"
+              },
+              "afterUpdate": {
+                "type": "string"
+              },
+              "beforeDelete": {
+                "type": "string"
+              },
+              "afterDelete": {
+                "type": "string"
+              },
+              "beforeSave": {
+                "type": "string"
+              },
+              "afterSave": {
+                "type": "string"
+              }
+            }
+          },
+          "softDelete": {
+            "type": "boolean",
+            "description": "Enable soft deletes (adds deletedAt timestamp instead of hard delete)"
           },
           "indexes": {
             "type": "array",

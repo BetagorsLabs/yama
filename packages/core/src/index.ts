@@ -90,14 +90,22 @@ export type { EndpointDefinition, HandlerContextConfig, AvailableServices } from
 export {
   type EntityField,
   type EntityFieldType,
+  type EntityFieldDefinition,
   type EntityDefinition,
   type EntityIndex,
   type YamaEntities,
   type DatabaseConfig,
   type CrudConfig,
+  type RelationDefinition,
+  type ValidationRule,
+  type ComputedFieldDefinition,
+  type EntityHooks,
   entityToSchema,
   entitiesToSchemas,
   mergeSchemas,
+  parseFieldDefinition,
+  parseRelationDefinition,
+  normalizeEntityDefinition,
 } from "./entities.js";
 
 // Export CRUD generation functions
@@ -147,9 +155,17 @@ export {
   type HandlerContext,
   type HandlerFunction,
   type HttpServerInstance,
+  type TraceSpan,
   createHttpServerAdapter,
   registerHttpServerAdapter,
 } from "./infrastructure/server.js";
+
+// Export monitoring types
+export {
+  type MonitoringHooks,
+  type MonitoringService,
+  type ErrorContext,
+} from "./infrastructure/monitoring.js";
 
 // Export updated config types
 export {
@@ -267,6 +283,161 @@ export {
   replayMigrations,
   getCurrentModelHashFromDB,
 } from "./migrations/replay.js";
+
+// Export snapshot system
+export {
+  type Snapshot,
+  type SnapshotMetadata,
+  type SnapshotManifest,
+  getSnapshotsDir,
+  getSnapshotPath,
+  getManifestPath,
+  ensureSnapshotsDir,
+  loadManifest,
+  saveManifest,
+  createSnapshot,
+  saveSnapshot,
+  loadSnapshot,
+  snapshotExists,
+  getAllSnapshotHashes,
+  findSnapshot,
+  getSnapshotMetadata,
+  deleteSnapshot,
+  getAllSnapshots,
+} from "./migrations/snapshots.js";
+
+// Export transition system
+export {
+  type Transition,
+  type TransitionMetadata,
+  type TransitionGraph,
+  getTransitionsDir,
+  getTransitionPath,
+  getGraphPath,
+  ensureTransitionsDir,
+  createTransition,
+  saveTransition,
+  loadTransition,
+  transitionExists,
+  deleteTransition,
+  getTransitionsFrom,
+  getTransitionsTo,
+  loadGraph,
+  saveGraph,
+  updateGraph,
+  removeFromGraph,
+  getAllTransitions,
+  rebuildGraph,
+} from "./migrations/transitions.js";
+
+// Export graph path computation
+export {
+  type PathResult,
+  findPath,
+  findReversePath,
+  findAllPaths,
+  getDirectTransition,
+  pathExists,
+  getReachableSnapshots,
+  getPredecessorSnapshots,
+} from "./migrations/graph.js";
+
+// Export state management
+export {
+  type EnvironmentState,
+  getStateDir,
+  getStatePath,
+  ensureStateDir,
+  loadState,
+  saveState,
+  getOrCreateState,
+  updateState,
+  getCurrentSnapshot,
+  stateExists,
+  deleteState,
+  listEnvironments,
+  getAllStates,
+} from "./migrations/state.js";
+
+// Export merge resolution
+export {
+  type ConflictType,
+  type Conflict,
+  type MergeResult,
+  mergeSchemas,
+  detectConflicts,
+  canAutoMerge,
+  createMergeSnapshot,
+} from "./migrations/merge.js";
+
+// Export shadow columns
+export {
+  type ShadowColumn,
+  type ShadowManifest,
+  getShadowsDir,
+  getShadowManifestPath,
+  ensureShadowsDir,
+  generateShadowColumnName,
+  loadShadowManifest,
+  saveShadowManifest,
+  registerShadowColumn,
+  getShadowColumn,
+  getShadowColumnsForTable,
+  getActiveShadowColumns,
+  getExpiredShadowColumns,
+  markShadowRestored,
+  deleteShadowColumn,
+  calculateExpirationDate,
+  isShadowExpired,
+} from "./migrations/shadows.js";
+
+// Export backup system
+export {
+  type BackupMetadata,
+  type BackupEntry,
+  type BackupChain,
+  getBackupsDir,
+  getSnapshotsBackupDir,
+  getIncrementalBackupDir,
+  getBackupManifestsDir,
+  ensureBackupDirs,
+  generateBackupFilename,
+  calculateChecksum,
+  registerBackup,
+  loadBackupMetadata,
+  listBackups,
+  getBackupsForSnapshot,
+  createBackupChain,
+  loadBackupChain,
+  calculateBackupSize,
+  isBackupExpired,
+  getExpiredBackups,
+} from "./migrations/backups.js";
+
+// Export audit logging
+export {
+  type AuditLogEntry,
+  type AuditConfig,
+  CREATE_AUDIT_LOG_TABLE_SQL,
+  shouldAudit,
+  createAuditEntry,
+  parseRetentionPeriod,
+  isAuditEntryExpired,
+  toAuditOperation,
+} from "./migrations/audit.js";
+
+// Export safety classification
+export {
+  SafetyLevel,
+  type SafetyAssessment,
+  type ImpactAnalysis,
+  classifyStep,
+  assessTransition,
+  analyzeImpact,
+  isSafeForAutoDeploy,
+  requiresApproval,
+  getSafetySummary,
+} from "./migrations/safety.js";
 
 // Export trash/recycle bin types
 export {
