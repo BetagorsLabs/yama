@@ -10,8 +10,6 @@ interface PluginOptions {
  * List installed service plugins
  */
 export async function pluginListCommand(): Promise<void> {
-  console.log("📦 Installed Yama service plugins:\n");
-
   try {
     const pkg = readPackageJson();
     const deps = {
@@ -33,6 +31,28 @@ export async function pluginListCommand(): Promise<void> {
         // Not a Yama plugin, skip
       }
     }
+
+    // Use TUI mode if appropriate (disabled in CI or non-interactive environments)
+    const { shouldUseTUI } = await import("../utils/tui-utils.ts");
+    const useTUI = shouldUseTUI();
+    
+    if (useTUI) {
+      const pluginList = plugins.map((p) => {
+        const manifest = p.manifest as { type?: string; service?: string } | undefined;
+        return {
+          name: p.name,
+          version: p.version,
+          type: manifest?.type,
+          service: manifest?.service,
+        };
+      });
+      const { runPluginListTUI } = await import("../tui/PluginListCommand.tsx");
+      runPluginListTUI({ plugins: pluginList });
+      return;
+    }
+
+    // Fallback to text output
+    console.log("📦 Installed Yama service plugins:\n");
 
     if (plugins.length === 0) {
       console.log("  No service plugins installed.");
@@ -100,8 +120,6 @@ export async function pluginInstallCommand(options: PluginOptions): Promise<void
  * Validate all installed service plugins
  */
 export async function pluginValidateCommand(): Promise<void> {
-  console.log("🔍 Validating service plugins...\n");
-
   try {
     const pkg = readPackageJson();
     const deps = {
@@ -109,13 +127,14 @@ export async function pluginValidateCommand(): Promise<void> {
       ...((pkg.devDependencies || {}) as Record<string, string>),
     };
 
+    const results: Array<{ plugin: string; valid: boolean; error?: string }> = [];
     let validCount = 0;
     let invalidCount = 0;
 
     for (const [packageName] of Object.entries(deps)) {
       try {
         const plugin = await loadServicePlugin(packageName);
-        console.log(`✅ ${packageName} - Valid`);
+        results.push({ plugin: packageName, valid: true });
         validCount++;
       } catch (error) {
         // Check if it's a Yama plugin that failed validation
@@ -124,11 +143,36 @@ export async function pluginValidateCommand(): Promise<void> {
           const { loadPluginFromPackage } = await import("@betagors/yama-core");
           await loadPluginFromPackage(packageName);
           // If we get here, it's a Yama plugin but failed validation
-          console.log(`❌ ${packageName} - Invalid: ${error instanceof Error ? error.message : String(error)}`);
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          results.push({ plugin: packageName, valid: false, error: errorMsg });
           invalidCount++;
         } catch {
           // Not a Yama plugin, skip
         }
+      }
+    }
+
+    // Use TUI mode if appropriate (disabled in CI or non-interactive environments)
+    const { shouldUseTUI } = await import("../utils/tui-utils.ts");
+    const useTUI = shouldUseTUI();
+    
+    if (useTUI) {
+      const { runPluginValidateTUI } = await import("../tui/PluginValidateCommand.tsx");
+      runPluginValidateTUI({
+        results,
+        summary: { valid: validCount, invalid: invalidCount },
+      });
+      return;
+    }
+
+    // Fallback to text output
+    console.log("🔍 Validating service plugins...\n");
+
+    for (const result of results) {
+      if (result.valid) {
+        console.log(`✅ ${result.plugin} - Valid`);
+      } else {
+        console.log(`❌ ${result.plugin} - Invalid: ${result.error || "Unknown error"}`);
       }
     }
 

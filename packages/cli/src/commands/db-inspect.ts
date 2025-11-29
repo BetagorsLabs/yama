@@ -141,42 +141,94 @@ export async function dbInspectCommand(
         ]);
       }
 
+      // Use TUI mode if appropriate (disabled in CI or non-interactive environments)
+      const { shouldUseTUI } = await import("../utils/tui-utils.ts");
+      const useTUI = shouldUseTUI();
+      
+      const columnsData: Array<{
+        name: string;
+        type: string;
+        nullable: string;
+        default: string;
+        isPK: boolean;
+      }> = (columnsResult as Array<{
+        column_name: string;
+        data_type: string;
+        character_maximum_length: number | null;
+        is_nullable: string;
+        column_default: string | null;
+        is_identity: string;
+      }>).map((col) => {
+        let typeStr = col.data_type.toUpperCase();
+        if (col.character_maximum_length) {
+          typeStr += `(${col.character_maximum_length})`;
+        }
+        let defaultStr = col.column_default || "-";
+        if (defaultStr !== "-" && defaultStr.length > 30) {
+          defaultStr = defaultStr.substring(0, 27) + "...";
+        }
+        return {
+          name: col.column_name,
+          type: typeStr,
+          nullable: col.is_nullable === "YES" ? "Yes" : "No",
+          default: defaultStr,
+          isPK: primaryKeyColumns.has(col.column_name),
+        };
+      });
+
+      // Get sample data (first 10 rows)
+      let sampleData: Array<Record<string, unknown>> | undefined;
+      if (rowCount > 0) {
+        const sampleResult = await sql.unsafe(`SELECT * FROM ${quotedTableName} LIMIT 10`);
+        if (sampleResult.length > 0) {
+          sampleData = sampleResult as Array<Record<string, unknown>>;
+        }
+      }
+      
+      if (useTUI) {
+        const { runDbInspectTUI } = await import("../tui/DbInspectCommand.tsx");
+        runDbInspectTUI({
+          tableName,
+          columns: columnsData,
+          rowCount,
+          sampleData,
+        });
+        await dbPlugin.client.closeDatabase();
+        return;
+      }
+
+      // Fallback to text output
       console.log("📐 Schema:\n");
       printTable(schemaData);
       console.log(`\n📊 Total rows: ${colors.bold(rowCount.toLocaleString())}\n`);
 
-      // Get sample data (first 10 rows)
-      if (rowCount > 0) {
-        const sampleResult = await sql.unsafe(`SELECT * FROM ${quotedTableName} LIMIT 10`);
+      if (sampleData) {
+        // Get column names from first row
+        const columnNames = Object.keys(sampleData[0]);
         
-        if (sampleResult.length > 0) {
-          // Get column names from first row
-          const columnNames = Object.keys(sampleResult[0] as Record<string, unknown>);
-          
-          // Build sample data table
-          const sampleData: unknown[][] = [columnNames];
-          
-          for (const row of sampleResult as Array<Record<string, unknown>>) {
-            const rowData: unknown[] = [];
-            for (const colName of columnNames) {
-              const value = row[colName];
-              if (value === null) {
-                rowData.push(colors.dim("NULL"));
-              } else if (typeof value === "string" && value.length > 30) {
-                rowData.push(value.substring(0, 27) + "...");
-              } else {
-                rowData.push(String(value));
-              }
+        // Build sample data table
+        const sampleTableData: unknown[][] = [columnNames];
+        
+        for (const row of sampleData) {
+          const rowData: unknown[] = [];
+          for (const colName of columnNames) {
+            const value = row[colName];
+            if (value === null) {
+              rowData.push(colors.dim("NULL"));
+            } else if (typeof value === "string" && value.length > 30) {
+              rowData.push(value.substring(0, 27) + "...");
+            } else {
+              rowData.push(String(value));
             }
-            sampleData.push(rowData);
           }
+          sampleTableData.push(rowData);
+        }
 
-          console.log("📄 Sample Data (first 10 rows):\n");
-          printTable(sampleData);
-          
-          if (rowCount > 10) {
-            info(`\nShowing 10 of ${rowCount.toLocaleString()} rows.`);
-          }
+        console.log("📄 Sample Data (first 10 rows):\n");
+        printTable(sampleTableData);
+        
+        if (rowCount > 10) {
+          info(`\nShowing 10 of ${rowCount.toLocaleString()} rows.`);
         }
       } else {
         info("Table is empty (no rows).");

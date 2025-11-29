@@ -96,15 +96,6 @@ export async function pluginMetricsCommand(
       ? metricsService.getSummary()
       : pluginMetricsCollector.getSummary();
 
-    console.log("\n📊 Plugin Metrics Summary\n");
-    console.log(`Total Plugins: ${summary.totalPlugins}`);
-    console.log(`Total Load Time: ${summary.totalLoadTime.toFixed(2)}ms`);
-    console.log(`Total Init Time: ${summary.totalInitTime.toFixed(2)}ms`);
-    console.log(`Average Load Time: ${summary.averageLoadTime.toFixed(2)}ms`);
-    console.log(`Average Init Time: ${summary.averageInitTime.toFixed(2)}ms`);
-    console.log(`Total API Calls: ${summary.totalAPICalls}`);
-    console.log(`Total Errors: ${summary.totalErrors}`);
-
     // Export format handling
     const format = options.format || "table";
     
@@ -120,6 +111,59 @@ export async function pluginMetricsCommand(
       console.log(JSON.stringify({ summary, plugins: allMetrics }, null, 2));
       return;
     }
+
+    // Use TUI mode if appropriate (disabled in CI or non-interactive environments)
+    const { shouldUseTUI } = await import("../utils/tui-utils.ts");
+    const useTUI = shouldUseTUI();
+    
+    if (useTUI) {
+      const pluginMetrics: Array<{
+        plugin: string;
+        loadTime: number;
+        initTime: number;
+        apiCalls: number;
+        errors: number;
+        lastError?: string;
+      }> = [];
+
+      for (const pluginName of pluginsToShow) {
+        const metrics = metricsService
+          ? metricsService.getPluginMetrics(pluginName)
+          : pluginMetricsCollector.getMetrics(pluginName);
+        if (metrics) {
+          pluginMetrics.push({
+            plugin: pluginName,
+            loadTime: metrics.loadTime,
+            initTime: metrics.initTime,
+            apiCalls: metrics.apiCalls,
+            errors: metrics.errors,
+            lastError: metrics.lastError?.message,
+          });
+        } else {
+          pluginMetrics.push({
+            plugin: pluginName,
+            loadTime: 0,
+            initTime: 0,
+            apiCalls: 0,
+            errors: 0,
+          });
+        }
+      }
+
+      const { runPluginMetricsTUI } = await import("../tui/PluginMetricsCommand.tsx");
+      runPluginMetricsTUI({ summary, plugins: pluginMetrics });
+      return;
+    }
+
+    // Fallback to text output
+    console.log("\n📊 Plugin Metrics Summary\n");
+    console.log(`Total Plugins: ${summary.totalPlugins}`);
+    console.log(`Total Load Time: ${summary.totalLoadTime.toFixed(2)}ms`);
+    console.log(`Total Init Time: ${summary.totalInitTime.toFixed(2)}ms`);
+    console.log(`Average Load Time: ${summary.averageLoadTime.toFixed(2)}ms`);
+    console.log(`Average Init Time: ${summary.averageInitTime.toFixed(2)}ms`);
+    console.log(`Total API Calls: ${summary.totalAPICalls}`);
+    console.log(`Total Errors: ${summary.totalErrors}`);
 
     // Show per-plugin metrics (table format)
     if (pluginsToShow.length > 0) {
