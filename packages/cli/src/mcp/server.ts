@@ -6,6 +6,11 @@ import {
   ReadResourceRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { existsSync } from "fs";
+import { findYamaConfig } from "../utils/project-detection.ts";
+import { getConfigDir, readYamaConfig } from "../utils/file-utils.ts";
+import { resolveEnvVars, loadEnvFile, setPluginRegistryConfig, loadPlugin, getAllMCPTools } from "@betagors/yama-core";
+import type { PluginMCPTool } from "@betagors/yama-core";
 
 // Import tools
 import { yamaValidateTool } from "./tools/validate.ts";
@@ -16,6 +21,19 @@ import { yamaConfigTool } from "./tools/config.ts";
 import { yamaEndpointsTool } from "./tools/endpoints.ts";
 import { yamaSchemasTool } from "./tools/schemas.ts";
 import { yamaCreateTool } from "./tools/create.ts";
+import { yamaAddEndpointTool } from "./tools/add-endpoint.ts";
+import { yamaAddHandlerTool } from "./tools/add-handler.ts";
+import { yamaAddSchemaTool } from "./tools/add-schema.ts";
+import { yamaAddPluginTool } from "./tools/add-plugin.ts";
+import { yamaDeployTool } from "./tools/deploy.ts";
+import { yamaRollbackTool } from "./tools/rollback.ts";
+import { yamaInitTool } from "./tools/init.ts";
+import { yamaMigrationCreateTool } from "./tools/migration-create.ts";
+import { yamaAddEntityTool } from "./tools/add-entity.ts";
+import { yamaRemovePluginTool } from "./tools/remove-plugin.ts";
+import { yamaResolveTool } from "./tools/resolve.ts";
+import { yamaSchemaApplyTool } from "./tools/schema-apply.ts";
+import { yamaSchemaCheckTool } from "./tools/schema-check.ts";
 
 // Import resources
 import { getConfigResource } from "./resources/config.ts";
@@ -23,8 +41,8 @@ import { getEndpointsResource } from "./resources/endpoints.ts";
 import { getSchemasResource } from "./resources/schemas.ts";
 import { getMigrationStatusResource } from "./resources/migration-status.ts";
 
-// Register all tools
-const tools = [
+// Core tools (always available)
+const coreTools = [
   yamaValidateTool,
   yamaGenerateTool,
   yamaMigrationGenerateTool,
@@ -33,7 +51,74 @@ const tools = [
   yamaEndpointsTool,
   yamaSchemasTool,
   yamaCreateTool,
+  yamaAddEndpointTool,
+  yamaAddHandlerTool,
+  yamaAddSchemaTool,
+  yamaAddPluginTool,
+  yamaDeployTool,
+  yamaRollbackTool,
+  yamaInitTool,
+  yamaMigrationCreateTool,
+  yamaAddEntityTool,
+  yamaRemovePluginTool,
+  yamaResolveTool,
+  yamaSchemaApplyTool,
+  yamaSchemaCheckTool,
 ];
+
+/**
+ * Load plugin tools from yama.yaml
+ */
+async function loadPluginTools(): Promise<PluginMCPTool[]> {
+  const yamaConfigPath = findYamaConfig() || "yama.yaml";
+  
+  if (!existsSync(yamaConfigPath)) {
+    return [];
+  }
+
+  try {
+    const environment = process.env.NODE_ENV || "development";
+    loadEnvFile(yamaConfigPath, environment);
+    let config = readYamaConfig(yamaConfigPath) as {
+      plugins?: Record<string, Record<string, unknown>> | string[];
+    };
+    config = resolveEnvVars(config) as typeof config;
+    const configDir = getConfigDir(yamaConfigPath);
+
+    // Set plugin registry config
+    setPluginRegistryConfig(config, configDir);
+
+    // Get plugin list
+    const pluginList: string[] = [];
+    if (config.plugins) {
+      if (Array.isArray(config.plugins)) {
+        pluginList.push(...config.plugins);
+      } else {
+        pluginList.push(...Object.keys(config.plugins));
+      }
+    }
+
+    // Load all plugins
+    for (const pluginName of pluginList) {
+      try {
+        const pluginConfig = typeof config.plugins === "object" && !Array.isArray(config.plugins)
+          ? config.plugins[pluginName] || {}
+          : {};
+        await loadPlugin(pluginName, configDir, pluginConfig);
+      } catch (error) {
+        // Log but don't fail - some plugins might not be installed
+        console.warn(`Warning: Failed to load plugin ${pluginName}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    // Get all MCP tools from loaded plugins
+    return getAllMCPTools();
+  } catch (error) {
+    // If loading fails, return empty array
+    console.warn(`Warning: Failed to load plugin tools: ${error instanceof Error ? error.message : String(error)}`);
+    return [];
+  }
+}
 
 // Register all resources
 const resources = [
@@ -77,10 +162,16 @@ export async function createMCPServer(): Promise<Server> {
     }
   );
 
+  // Load plugin tools
+  const pluginTools = await loadPluginTools();
+  
+  // Combine core tools and plugin tools
+  const allTools = [...coreTools, ...pluginTools];
+
   // Register tools
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
-      tools: tools.map((tool) => ({
+      tools: allTools.map((tool) => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema,
@@ -90,13 +181,21 @@ export async function createMCPServer(): Promise<Server> {
 
   // Handle tool calls
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const tool = tools.find((t) => t.name === request.params.name);
+    const tool = allTools.find((t) => t.name === request.params.name);
     if (!tool) {
       throw new Error(`Tool not found: ${request.params.name}`);
     }
 
     // Parse and validate input
-    const parsedInput = tool.inputSchema.parse(request.params.arguments || {});
+    // Handle both core tools (with parse method) and plugin tools (with parse method)
+    let parsedInput: any;
+    if (typeof tool.inputSchema.parse === "function") {
+      parsedInput = tool.inputSchema.parse(request.params.arguments || {});
+    } else {
+      // Fallback for non-zod schemas (shouldn't happen, but be safe)
+      parsedInput = request.params.arguments || {};
+    }
+    
     const result = await tool.handler(parsedInput);
 
     return result;

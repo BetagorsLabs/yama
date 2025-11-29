@@ -178,6 +178,8 @@ export {
   type YamaPlugin,
   type PluginContext,
   type PluginMigrationDefinition,
+  type PluginCLICommand,
+  type PluginCLICommandOption,
   loadPlugin,
   getPlugin,
   getPluginAPI,

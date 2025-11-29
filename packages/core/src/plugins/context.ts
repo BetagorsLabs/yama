@@ -1,4 +1,4 @@
-import type { YamaPlugin, PluginManifest } from "./base.js";
+import type { YamaPlugin, PluginManifest, PluginCLICommand, PluginMCPTool } from "./base.js";
 import type { EventEmitter } from "events";
 import type { MiddlewareRegistry } from "../middleware/registry.js";
 
@@ -90,6 +90,52 @@ class ServiceRegistry {
 }
 
 /**
+ * CLI command registry for plugin commands
+ */
+class CLICommandRegistry {
+  private commands = new Map<string, PluginCLICommand>();
+
+  register(command: PluginCLICommand): void {
+    this.commands.set(command.name, command);
+  }
+
+  get(name: string): PluginCLICommand | undefined {
+    return this.commands.get(name);
+  }
+
+  getAll(): PluginCLICommand[] {
+    return Array.from(this.commands.values());
+  }
+
+  clear(): void {
+    this.commands.clear();
+  }
+}
+
+/**
+ * MCP tool registry for plugin tools
+ */
+class MCPToolRegistry {
+  private tools = new Map<string, PluginMCPTool>();
+
+  register(tool: PluginMCPTool): void {
+    this.tools.set(tool.name, tool);
+  }
+
+  get(name: string): PluginMCPTool | undefined {
+    return this.tools.get(name);
+  }
+
+  getAll(): PluginMCPTool[] {
+    return Array.from(this.tools.values());
+  }
+
+  clear(): void {
+    this.tools.clear();
+  }
+}
+
+/**
  * Plugin context implementation
  */
 export class PluginContextImpl {
@@ -100,6 +146,8 @@ export class PluginContextImpl {
   private pluginAPIs: Map<string, any>;
   private eventEmitter: SimpleEventEmitter;
   private serviceRegistry: ServiceRegistry;
+  private cliCommandRegistry: CLICommandRegistry;
+  private mcpToolRegistry: MCPToolRegistry;
   private middlewareRegistry: MiddlewareRegistry | null;
 
   constructor(
@@ -117,6 +165,8 @@ export class PluginContextImpl {
     this.pluginAPIs = pluginAPIs;
     this.eventEmitter = new SimpleEventEmitter();
     this.serviceRegistry = new ServiceRegistry();
+    this.cliCommandRegistry = new CLICommandRegistry();
+    this.mcpToolRegistry = new MCPToolRegistry();
     this.middlewareRegistry = middlewareRegistry || null;
   }
 
@@ -203,6 +253,52 @@ export class PluginContextImpl {
    */
   once(event: string, handler: Function): void {
     this.eventEmitter.once(event, handler);
+  }
+
+  /**
+   * Register a CLI command
+   */
+  registerCLICommand(command: PluginCLICommand): void {
+    this.cliCommandRegistry.register(command);
+    this.emit("cli:command:registered", { command });
+    this.logger.debug(`Registered CLI command: ${command.name}`);
+  }
+
+  /**
+   * Get all registered CLI commands
+   */
+  getCLICommands(): PluginCLICommand[] {
+    return this.cliCommandRegistry.getAll();
+  }
+
+  /**
+   * Get a CLI command by name
+   */
+  getCLICommand(name: string): PluginCLICommand | undefined {
+    return this.cliCommandRegistry.get(name);
+  }
+
+  /**
+   * Register an MCP tool
+   */
+  registerMCPTool(tool: PluginMCPTool): void {
+    this.mcpToolRegistry.register(tool);
+    this.emit("mcp:tool:registered", { tool });
+    this.logger.debug(`Registered MCP tool: ${tool.name}`);
+  }
+
+  /**
+   * Get all registered MCP tools
+   */
+  getMCPTools(): PluginMCPTool[] {
+    return this.mcpToolRegistry.getAll();
+  }
+
+  /**
+   * Get an MCP tool by name
+   */
+  getMCPTool(name: string): PluginMCPTool | undefined {
+    return this.mcpToolRegistry.get(name);
   }
 }
 

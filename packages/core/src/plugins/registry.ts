@@ -31,6 +31,7 @@ export class PluginRegistry {
   private manifests = new Map<string, PluginManifest>();
   private packageDirs = new Map<string, string>();
   private pluginAPIs = new Map<string, any>();
+  private pluginContexts = new Map<string, PluginContext>();
   private config: Record<string, unknown> = {};
   private projectDir: string = process.cwd();
   private logger: Logger | null = null;
@@ -228,6 +229,9 @@ export class PluginRegistry {
 
     // Create context
     const pluginContext = this.createContext();
+    
+    // Store context for later access to commands and tools
+    this.pluginContexts.set(packageName, pluginContext);
 
     // Initialize plugin with config and context
     // Store the API returned from init()
@@ -432,6 +436,30 @@ export class PluginRegistry {
   }
 
   /**
+   * Get all registered CLI commands from all plugins
+   */
+  getAllCLICommands(): import("./base.js").PluginCLICommand[] {
+    const allCommands: import("./base.js").PluginCLICommand[] = [];
+    for (const context of this.pluginContexts.values()) {
+      // All contexts are PluginContextImpl instances
+      allCommands.push(...(context as PluginContextImpl).getCLICommands());
+    }
+    return allCommands;
+  }
+
+  /**
+   * Get all registered MCP tools from all plugins
+   */
+  getAllMCPTools(): import("./base.js").PluginMCPTool[] {
+    const allTools: import("./base.js").PluginMCPTool[] = [];
+    for (const context of this.pluginContexts.values()) {
+      // All contexts are PluginContextImpl instances
+      allTools.push(...(context as PluginContextImpl).getMCPTools());
+    }
+    return allTools;
+  }
+
+  /**
    * Clear all plugins
    */
   clear(): void {
@@ -439,6 +467,7 @@ export class PluginRegistry {
     this.manifests.clear();
     this.packageDirs.clear();
     this.pluginAPIs.clear();
+    this.pluginContexts.clear();
   }
 }
 
@@ -511,5 +540,19 @@ export function getPluginsByCategory(category: string): YamaPlugin[] {
  */
 export function getPluginByType(type: string): YamaPlugin | null {
   return pluginRegistry.getPluginByType(type);
+}
+
+/**
+ * Get all registered CLI commands from all plugins
+ */
+export function getAllCLICommands(): import("./base.js").PluginCLICommand[] {
+  return pluginRegistry.getAllCLICommands();
+}
+
+/**
+ * Get all registered MCP tools from all plugins
+ */
+export function getAllMCPTools(): import("./base.js").PluginMCPTool[] {
+  return pluginRegistry.getAllMCPTools();
 }
 

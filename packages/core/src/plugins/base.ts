@@ -201,6 +201,96 @@ export interface Logger {
 }
 
 /**
+ * CLI command option definition
+ */
+export interface PluginCLICommandOption {
+  flags: string;
+  description: string;
+  defaultValue?: any;
+  required?: boolean;
+}
+
+/**
+ * CLI command definition for plugins
+ */
+export interface PluginCLICommand {
+  /**
+   * Command name (e.g., "docker generate" or "ci write")
+   * Can be a single word or space-separated for nested commands
+   */
+  name: string;
+  
+  /**
+   * Command description
+   */
+  description: string;
+  
+  /**
+   * Command options/flags
+   */
+  options?: PluginCLICommandOption[];
+  
+  /**
+   * Command action handler
+   */
+  action: (options: Record<string, any>) => Promise<void> | void;
+  
+  /**
+   * Plugin name that registered this command (for namespacing)
+   */
+  pluginName?: string;
+}
+
+/**
+ * MCP tool result content
+ */
+export interface MCPToolResultContent {
+  type: "text" | "image" | "resource";
+  text?: string;
+  data?: string;
+  mimeType?: string;
+  uri?: string;
+}
+
+/**
+ * MCP tool result
+ */
+export interface MCPToolResult {
+  content: MCPToolResultContent[];
+  isError?: boolean;
+}
+
+/**
+ * MCP tool definition for plugins
+ */
+export interface PluginMCPTool {
+  /**
+   * Tool name (should be namespaced, e.g., "yama_docker_generate")
+   */
+  name: string;
+  
+  /**
+   * Tool description
+   */
+  description: string;
+  
+  /**
+   * Input schema (Zod schema)
+   */
+  inputSchema: any; // Using any to avoid requiring zod as a dependency in core
+  
+  /**
+   * Tool handler function
+   */
+  handler: (args: any) => Promise<MCPToolResult>;
+  
+  /**
+   * Plugin name that registered this tool (for namespacing)
+   */
+  pluginName?: string;
+}
+
+/**
  * Plugin context passed to plugins
  * Provides access to other plugins, services, events, and runtime information
  */
@@ -254,6 +344,16 @@ export interface PluginContext {
    * Get middleware registry to register middleware
    */
   getMiddlewareRegistry(): import("../middleware/registry.js").MiddlewareRegistry;
+  
+  /**
+   * Register a CLI command that will be available in the Yama CLI
+   */
+  registerCLICommand(command: PluginCLICommand): void;
+  
+  /**
+   * Register an MCP tool that will be available in the MCP server
+   */
+  registerMCPTool(tool: PluginMCPTool): void;
   
   /**
    * Emit an event

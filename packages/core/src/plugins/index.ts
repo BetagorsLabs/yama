@@ -7,6 +7,11 @@ export {
   type PluginMigrationDefinition,
   type PluginDependencies,
   type Logger,
+  type PluginCLICommand,
+  type PluginCLICommandOption,
+  type PluginMCPTool,
+  type MCPToolResult,
+  type MCPToolResultContent,
 } from "./base.js";
 
 // Export plugin loader
@@ -36,6 +41,8 @@ export {
   getPluginsByCategory,
   getPluginByType,
   setPluginRegistryConfig,
+  getAllCLICommands,
+  getAllMCPTools,
 } from "./registry.js";
 
 // Export plugin migrations

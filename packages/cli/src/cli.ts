@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import type { PluginCLICommand } from "@betagors/yama-core";
 import { createCommand } from "./commands/create.ts";
 import { devCommand } from "./commands/dev.ts";
 import { generateCommand } from "./commands/generate.ts";
@@ -677,5 +678,69 @@ program
     await startMCPServer();
   });
 
-program.parse();
+// Load and register plugin commands
+async function registerPluginCommands() {
+  const { loadPluginCommands } = await import("./utils/plugin-commands.ts");
+  const commands = await loadPluginCommands();
+  
+  // Group commands by their first word (e.g., "docker" in "docker generate")
+  const commandGroups = new Map<string, PluginCLICommand[]>();
+  
+  for (const command of commands) {
+    const parts = command.name.split(" ");
+    const groupName = parts[0];
+    
+    if (!commandGroups.has(groupName)) {
+      commandGroups.set(groupName, []);
+    }
+    commandGroups.get(groupName)!.push(command);
+  }
+  
+  // Create command groups and subcommands
+  for (const [groupName, groupCommands] of commandGroups.entries()) {
+    const groupCommand = program
+      .command(groupName)
+      .description(`Commands for ${groupName} plugin`);
+    
+    for (const cmd of groupCommands) {
+      const parts = cmd.name.split(" ");
+      const subcommandName = parts.slice(1).join(" ") || groupName;
+      
+      const subcommand = groupCommand
+        .command(subcommandName)
+        .description(cmd.description);
+      
+      // Add options
+      if (cmd.options) {
+        for (const option of cmd.options) {
+          const flags = option.flags;
+          const isRequired = option.required;
+          const defaultValue = option.defaultValue;
+          
+          if (isRequired) {
+            subcommand.requiredOption(flags, option.description, defaultValue);
+          } else {
+            subcommand.option(flags, option.description, defaultValue);
+          }
+        }
+      }
+      
+      // Add action
+      subcommand.action(async (options) => {
+        try {
+          await cmd.action(options);
+        } catch (error) {
+          console.error(`Error executing command ${cmd.name}:`, error instanceof Error ? error.message : String(error));
+          process.exit(1);
+        }
+      });
+    }
+  }
+}
+
+// Register plugin commands before parsing
+(async () => {
+  await registerPluginCommands();
+  program.parse();
+})();
 
