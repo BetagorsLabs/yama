@@ -571,7 +571,12 @@ export function schemaToJsonSchema(
   visited: Set<string> = new Set(),
   useOpenAPIFormat: boolean = true
 ): Record<string, unknown> {
-  // Normalize schema to internal format
+  if (visited.has(schemaName)) {
+    throw new Error(`Circular reference detected in schema: ${schemaName}`);
+  }
+  visited.add(schemaName);
+  
+  // Normalize schema to internal format first
   let normalizedSchema: SchemaDefinition;
   try {
     normalizedSchema = normalizeSchemaDefinition(schemaDef);
@@ -580,31 +585,64 @@ export function schemaToJsonSchema(
       `Failed to normalize schema "${schemaName}": ${error instanceof Error ? error.message : String(error)}`
     );
   }
+  
+  // Handle source inheritance - merge fields from source
+  let fieldsToProcess: Record<string, SchemaField> = {};
+  if ((schemaDef as any).source && schemas) {
+    const sourceName = (schemaDef as any).source;
+    const sourceSchema = schemas[sourceName];
+    if (sourceSchema) {
+      // Normalize source schema to get its fields
+      const normalizedSource = normalizeSchemaDefinition(sourceSchema);
+      if (normalizedSource.fields && typeof normalizedSource.fields === 'object') {
+        // Convert source fields to SchemaField format
+        for (const [fieldName, fieldDef] of Object.entries(normalizedSource.fields)) {
+          const field = typeof fieldDef === "string" 
+            ? parseSchemaFieldDefinition(fieldName, fieldDef)
+            : fieldDef as SchemaField;
+          fieldsToProcess[fieldName] = field;
+        }
+      }
+      
+      // If include is specified, only include those fields
+      const includeFields = (schemaDef as any).include;
+      if (Array.isArray(includeFields)) {
+        const filtered: Record<string, SchemaField> = {};
+        for (const fieldName of includeFields) {
+          if (fieldsToProcess[fieldName]) {
+            filtered[fieldName] = fieldsToProcess[fieldName];
+          }
+        }
+        fieldsToProcess = filtered;
+      }
+    }
+  }
 
-  // Validate that fields exist and is an object
-  if (!normalizedSchema.fields || typeof normalizedSchema.fields !== 'object' || normalizedSchema.fields === null) {
+  // Merge with fields from this schema (override source fields)
+  if (normalizedSchema.fields && typeof normalizedSchema.fields === 'object' && normalizedSchema.fields !== null) {
+    // Convert normalized fields to SchemaField format for merging
+    for (const [fieldName, fieldDef] of Object.entries(normalizedSchema.fields)) {
+      const field = typeof fieldDef === "string" 
+        ? parseSchemaFieldDefinition(fieldName, fieldDef)
+        : fieldDef as SchemaField;
+      fieldsToProcess[fieldName] = field;
+    }
+  }
+
+  // If no fields at all, throw error
+  if (Object.keys(fieldsToProcess).length === 0) {
     throw new Error(
-      `Schema "${schemaName}" has invalid or missing fields. ` +
-      `Expected an object with field definitions, but got: ${typeof normalizedSchema.fields}. ` +
-      `Schema definition keys: ${Object.keys(normalizedSchema).join(', ')}`
+      `Schema "${schemaName}" has no fields. ` +
+      `Schema definition keys: ${Object.keys(schemaDef).join(', ')}`
     );
   }
 
   const properties: Record<string, unknown> = {};
   const required: string[] = [];
 
-  // Defensive check before Object.entries
-  const fieldsToProcess = normalizedSchema.fields;
-  if (!fieldsToProcess || typeof fieldsToProcess !== 'object' || fieldsToProcess === null) {
-    throw new Error(
-      `Schema "${schemaName}" has invalid fields object. ` +
-      `Cannot iterate over fields: ${typeof fieldsToProcess}`
-    );
-  }
-
   for (const [fieldName, field] of Object.entries(fieldsToProcess)) {
     try {
-      properties[fieldName] = fieldToJsonSchema(field, fieldName, schemas, visited, useOpenAPIFormat);
+      properties[fieldName] = fieldToJsonSchema(field, fieldName, schemas, new Set(visited), useOpenAPIFormat);
       
       if (field.required) {
         required.push(fieldName);
@@ -615,11 +653,30 @@ export function schemaToJsonSchema(
       );
     }
   }
+  
+  // Add computed fields
+  if (normalizedSchema.computed && typeof normalizedSchema.computed === 'object') {
+    for (const [fieldName, computedDef] of Object.entries(normalizedSchema.computed)) {
+      // Determine computed field type
+      let computedType = "string";
+      if (typeof computedDef === "object" && computedDef.type) {
+        computedType = computedDef.type;
+      } else {
+        const expr = typeof computedDef === "string" ? computedDef : computedDef.expression;
+        if (expr.includes("count(") || expr.includes("sum(") || expr.includes("avg(")) {
+          computedType = "number";
+        }
+      }
+      properties[fieldName] = { type: computedType, description: "Computed field" };
+    }
+  }
+
+  visited.delete(schemaName);
 
   const schema: Record<string, unknown> = {
     type: "object",
     properties,
-    required
+    required: required.length > 0 ? required : undefined
   };
 
   return schema;

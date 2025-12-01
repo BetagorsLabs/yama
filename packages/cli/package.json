@@ -44,7 +44,7 @@
     "@betagors/yama-core": "workspace:*",
     "@betagors/yama-openapi": "workspace:*",
     "@betagors/yama-postgres": "workspace:*",
-    "@betagors/yama-runtime-node": "workspace:*",
+    "@betagors/yama-node": "workspace:*",
     "@betagors/yama-sdk": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "boxen": "^8.0.1",
@@ -68,7 +68,6 @@
     "esbuild": "^0.27.0",
     "rimraf": "^5.0.0",
     "ts-node": "^10.9.2",
-    "tsx": "^4.7.0",
     "typescript": "^5.9.2"
   },
   "engines": {

@@ -210,7 +210,7 @@ yama/
 │   ├── core/             # Core runtime and types
 │   ├── postgres/         # PostgreSQL adapter
 │   ├── pglite/           # PGLite adapter
-│   ├── runtime-node/     # Node.js runtime
+│   ├── node/     # Node.js runtime
 │   └── ...
 ├── apps/
 │   └── docs/             # Documentation site

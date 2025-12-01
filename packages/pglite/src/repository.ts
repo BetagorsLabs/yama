@@ -37,6 +37,10 @@ function getDbColumnName(fieldName: string, field: EntityField): string {
 function getQueryableFields(entityDef: EntityDefinition, availableEntities: Set<string>): Array<{ fieldName: string; apiFieldName: string; dbColumnName: string; field: EntityField }> {
   const fields: Array<{ fieldName: string; apiFieldName: string; dbColumnName: string; field: EntityField }> = [];
   
+  if (!entityDef.fields) {
+    return fields;
+  }
+  
   for (const [fieldName, fieldDef] of Object.entries(entityDef.fields)) {
     const field = parseFieldDefinition(fieldName, fieldDef, availableEntities);
     // Skip inline relations
@@ -418,18 +422,20 @@ function generateRepositoryClass(
   
   // Find primary field
   let primaryField: [string, EntityField] | undefined;
-  for (const [fieldName, fieldDef] of Object.entries(entityDef.fields)) {
-    const field = parseFieldDefinition(fieldName, fieldDef, availableEntities);
-    if (field.primary) {
-      primaryField = [fieldName, field];
-      break;
+  if (entityDef.fields) {
+    for (const [fieldName, fieldDef] of Object.entries(entityDef.fields)) {
+      const field = parseFieldDefinition(fieldName, fieldDef, availableEntities);
+      if (field.primary) {
+        primaryField = [fieldName, field];
+        break;
+      }
     }
   }
   const primaryFieldName = primaryField ? primaryField[0] : 'id';
   const primaryDbColumn = primaryField ? getDbColumnName(primaryField[0], primaryField[1]) : 'id';
   
   // Check if we should generate ID: field exists and is string/uuid type
-  const idFieldDef = entityDef.fields['id'];
+  const idFieldDef = entityDef.fields?.['id'];
   const idField = idFieldDef ? parseFieldDefinition('id', idFieldDef, availableEntities) : (primaryField ? primaryField[1] : undefined);
   const shouldGenerateId = idField && (idField.type === 'string' || idField.type === 'uuid') && !idField.generated;
   
@@ -643,11 +649,13 @@ function generateRepositoryTypes(
   
   // Find primary field
   let primaryField: [string, EntityField] | undefined;
-  for (const [fieldName, fieldDef] of Object.entries(entityDef.fields)) {
-    const field = parseFieldDefinition(fieldName, fieldDef, availableEntities);
-    if (field.primary) {
-      primaryField = [fieldName, field];
-      break;
+  if (entityDef.fields) {
+    for (const [fieldName, fieldDef] of Object.entries(entityDef.fields)) {
+      const field = parseFieldDefinition(fieldName, fieldDef, availableEntities);
+      if (field.primary) {
+        primaryField = [fieldName, field];
+        break;
+      }
     }
   }
   const primaryFieldName = primaryField ? getApiFieldName(primaryField[0], primaryField[1]) || primaryField[0] : 'id';

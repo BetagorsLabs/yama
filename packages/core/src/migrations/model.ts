@@ -68,7 +68,10 @@ function normalizeEntities(entities: YamaEntities): string {
   for (const entityName of sortedEntityNames) {
     const entity = entities[entityName];
     // Use same fallback logic as normalizeEntityDefinition
-    const tableName = entity.database?.table || entity.table || entityName.toLowerCase() + 's';
+    const dbConfig = typeof entity.database === "string" 
+      ? { table: entity.database }
+      : entity.database;
+    const tableName = dbConfig?.table || entity.table || entityName.toLowerCase() + 's';
     const normalizedEntity: {
       table: string;
       fields: Record<string, Record<string, unknown>>;
@@ -79,6 +82,12 @@ function normalizeEntities(entities: YamaEntities): string {
     };
     
     // Sort field names for consistency
+    if (!entity.fields) {
+      // Entity has no fields - add it with empty fields and continue
+      normalized[entityName] = normalizedEntity;
+      continue;
+    }
+    
     const sortedFieldNames = Object.keys(entity.fields).sort();
     
     for (const fieldName of sortedFieldNames) {

@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "fs";
 import { dirname, join, relative, extname } from "path";
-import { startYamaNodeRuntime, type YamaServer } from "@betagors/yama-runtime-node";
+import { startYamaNodeRuntime, type YamaServer } from "@betagors/yama-node";
 import type { FSWatcher } from "chokidar";
 import chokidar from "chokidar";
 import { findYamaConfig } from "../utils/project-detection.ts";

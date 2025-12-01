@@ -68,6 +68,9 @@ export interface EntityField {
     through?: string;
     timestamps?: boolean;
   };
+  // Inline nested type marker (when field is an object with fields)
+  _isInlineNestedType?: boolean;
+  _inlineNestedFields?: Record<string, EntityFieldDefinition>;
 }
 
 /**
@@ -231,9 +234,15 @@ export interface CrudConfig {
  * EntityDefinition and SchemaDefinition are compatible - both represent the same concept
  */
 export interface EntityDefinition {
+  // Source schema/entity (for derived schemas)
+  source?: string; // Source entity/schema name to inherit from
+  
+  // Include only specific fields from source
+  include?: string[]; // Field names to include (used with source)
+  
   // Database config (can be at top level or in database:)
   table?: string; // Database table name
-  fields: Record<string, EntityFieldDefinition>; // Supports new concise type syntax
+  fields?: Record<string, EntityFieldDefinition>; // Supports new concise type syntax, inline nested types
   relations?: Record<string, RelationDefinition>; // Dedicated relations section
   validations?: Record<string, ValidationRule[]>; // Declarative validations
   computed?: Record<string, ComputedFieldDefinition>; // Computed fields
@@ -246,7 +255,7 @@ export interface EntityDefinition {
   database?: {
     table?: string; // Override table name
     indexes?: EntityIndex[]; // Database-specific indexes
-  };
+  } | string; // Shorthand: just table name
 }
 
 /**
@@ -259,6 +268,10 @@ export interface EntityDefinition {
 export interface YamaEntities {
   [entityName: string]: EntityDefinition;
 }
+
+// Re-export types from operations and policies for convenience
+export type { YamaOperations } from "./operations/types.js";
+export type { YamaPolicies } from "./policies/types.js";
 
 /**
  * Database connection configuration
@@ -299,6 +312,16 @@ export function parseFieldDefinition(
 ): EntityField {
   // Fast path: already parsed
   if (typeof fieldDef !== "string") {
+    // Handle inline nested type (object with fields property)
+    if (typeof fieldDef === "object" && fieldDef !== null && !Array.isArray(fieldDef) && "fields" in fieldDef) {
+      // This is an inline nested type - mark it as such
+      return {
+        type: "object",
+        _isInlineNestedType: true,
+        _inlineNestedFields: fieldDef.fields as Record<string, EntityFieldDefinition>,
+      } as any;
+    }
+    
     // If it's an object, convert using TypeParser
     if (typeof fieldDef === "object" && fieldDef !== null && !Array.isArray(fieldDef)) {
       const parsedType = TypeParser.parseExpanded(fieldDef as any);
@@ -465,6 +488,7 @@ export function parseRelationDefinition(
  * Normalize entity definition - optimized parser for shorthand-first syntax
  * Parses fields and relations on-demand, caching results
  * Extracts inline relations from fields and auto-generates foreign keys
+ * Handles source inheritance and include filtering
  */
 export function normalizeEntityDefinition(
   entityName: string,
@@ -474,13 +498,18 @@ export function normalizeEntityDefinition(
   fields: Record<string, EntityField>;
   relations?: Record<string, ReturnType<typeof parseRelationDefinition>>;
 } {
+  // Handle database shorthand (string)
+  const dbConfig = typeof entityDef.database === "string"
+    ? { table: entityDef.database }
+    : entityDef.database;
+  
   // Build normalized structure - only copy what we need
   const normalized: Omit<EntityDefinition, "fields" | "relations"> & {
     fields: Record<string, EntityField>;
     relations?: Record<string, ReturnType<typeof parseRelationDefinition>>;
   } = {
-    table: entityDef.database?.table || entityDef.table || entityName.toLowerCase() + 's',
-    indexes: entityDef.indexes || entityDef.database?.indexes,
+    table: dbConfig?.table || entityDef.table || entityName.toLowerCase() + 's',
+    indexes: entityDef.indexes || dbConfig?.indexes,
     apiSchema: entityDef.apiSchema,
     crud: entityDef.crud,
     validations: entityDef.validations,
@@ -488,6 +517,8 @@ export function normalizeEntityDefinition(
     variants: entityDef.variants,
     hooks: entityDef.hooks,
     softDelete: entityDef.softDelete,
+    source: entityDef.source,
+    include: entityDef.include,
     fields: {},
   };
 
@@ -496,11 +527,43 @@ export function normalizeEntityDefinition(
     ? new Set(Object.keys(allEntities))
     : undefined;
 
+  // Handle source inheritance
+  let baseFields: Record<string, EntityFieldDefinition> = {};
+  if (entityDef.source && allEntities) {
+    const sourceEntity = allEntities[entityDef.source];
+    if (sourceEntity) {
+      // Normalize source entity to get its fields
+      const normalizedSource = normalizeEntityDefinition(entityDef.source, sourceEntity, allEntities);
+      
+      // If include is specified, only include those fields
+      if (entityDef.include && Array.isArray(entityDef.include)) {
+        for (const fieldName of entityDef.include) {
+          if (normalizedSource.fields[fieldName]) {
+            // Convert EntityField back to EntityFieldDefinition for merging
+            // This is a simplified conversion - in practice, we'd need to preserve the original definition
+            baseFields[fieldName] = normalizedSource.fields[fieldName] as any;
+          }
+        }
+      } else {
+        // Include all fields from source
+        for (const [fieldName, field] of Object.entries(normalizedSource.fields)) {
+          baseFields[fieldName] = field as any;
+        }
+      }
+    }
+  }
+
+  // Merge base fields with entity's own fields (entity fields override source fields)
+  const mergedFields = {
+    ...baseFields,
+    ...(entityDef.fields || {}),
+  };
+
   // Parse fields and extract inline relations
-  if (!entityDef.fields || typeof entityDef.fields !== 'object' || entityDef.fields === null) {
+  if (Object.keys(mergedFields).length === 0) {
     return normalized;
   }
-  const fieldEntries = Object.entries(entityDef.fields);
+  const fieldEntries = Object.entries(mergedFields);
   const inlineRelations: Record<string, ReturnType<typeof parseRelationDefinition>> = {};
   
   for (let i = 0; i < fieldEntries.length; i++) {
@@ -531,7 +594,7 @@ export function normalizeEntityDefinition(
         const foreignKeyName = `${fieldName}Id`;
         
         // Only auto-generate if foreign key doesn't already exist
-        if (!entityDef.fields[foreignKeyName]) {
+        if (!entityDef.fields || !entityDef.fields[foreignKeyName]) {
           normalized.fields[foreignKeyName] = {
             type: "uuid",
             required: !parsedField.nullable,

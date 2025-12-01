@@ -438,11 +438,11 @@ export async function createCommand(projectName?: string, options: CreateOptions
     if (isInWorkspace && workspaceRootForProject) {
       // Use file: protocol for workspace packages
       dependencies["@betagors/yama-core"] = `file:${relative(projectPath, join(workspaceRootForProject, "packages", "core")).replace(/\\/g, "/")}`;
-      dependencies["@betagors/yama-runtime-node"] = `file:${relative(projectPath, join(workspaceRootForProject, "packages", "runtime-node")).replace(/\\/g, "/")}`;
+      dependencies["@betagors/yama-node"] = `file:${relative(projectPath, join(workspaceRootForProject, "packages", "node")).replace(/\\/g, "/")}`;
       devDependencies["@betagors/yama-cli"] = `file:${relative(projectPath, join(workspaceRootForProject, "packages", "cli")).replace(/\\/g, "/")}`;
     } else {
       dependencies["@betagors/yama-core"] = "latest";
-      dependencies["@betagors/yama-runtime-node"] = "latest";
+      dependencies["@betagors/yama-node"] = "latest";
       // Note: @betagors/yama-cli should be installed globally, not as a project dependency
       // Users should run: npm install -g @betagors/yama-cli (once published)
       // Or use: npx @betagors/yama-cli <command>

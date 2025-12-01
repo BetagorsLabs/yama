@@ -123,6 +123,33 @@ export {
   generateArraySchema,
 } from "./crud.js";
 
+// Export operations module
+export {
+  type OperationDefinition,
+  type OperationConfig,
+  type ParsedOperation,
+  type YamaOperations,
+  parseOperation,
+  parseOperations,
+  extractEntityName,
+  inferMethodFromName,
+  inferPathFromName,
+  inferOperationType,
+  generateEndpointFromOperation,
+  generateEndpointsFromOperations,
+} from "./operations/index.js";
+
+// Export policies module
+export {
+  type PolicyDefinition,
+  type YamaPolicies,
+  type ResolvedPolicy,
+  resolvePolicy,
+  normalizePolicy,
+  mergePolicies,
+  DEFAULT_PUBLIC_POLICY,
+} from "./policies/index.js";
+
 // Export environment utilities
 export {
   loadEnvFile,

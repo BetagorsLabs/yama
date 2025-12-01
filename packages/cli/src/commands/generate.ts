@@ -48,6 +48,8 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
       entities?: YamaEntities;
       apis?: unknown;
       endpoints?: unknown;
+      operations?: unknown;
+      policies?: unknown;
       plugins?: Record<string, Record<string, unknown>> | string[];
       realtime?: {
         entities?: Record<string, any>;
@@ -61,6 +63,8 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
       ...rawConfig,
       schemas: rawConfig.schemas && typeof rawConfig.schemas === 'object' && rawConfig.schemas !== null ? rawConfig.schemas : undefined,
       apis: rawConfig.apis && typeof rawConfig.apis === 'object' && rawConfig.apis !== null ? rawConfig.apis as { rest?: any } : undefined,
+      operations: rawConfig.operations && typeof rawConfig.operations === 'object' && rawConfig.operations !== null ? rawConfig.operations : undefined,
+      policies: rawConfig.policies && typeof rawConfig.policies === 'object' && rawConfig.policies !== null ? rawConfig.policies : undefined,
       plugins: rawConfig.plugins || undefined,
     };
     
@@ -91,14 +95,17 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
       );
     }
 
-    // Generate handler context types
-    if (!options.sdkOnly && (config.apis as { rest?: any })?.rest) {
+    // Generate handler context types (includes operations converted to endpoints)
+    if (!options.sdkOnly && ((config.apis as { rest?: any })?.rest || config.operations)) {
       // Detect available services from configured plugins
       const availableServices = detectAvailableServices(config.plugins);
       // Use merged entities (from both explicit entities and schemas with database properties)
+      // Include operations and policies for endpoint generation
       const configWithEntities = {
         ...config,
         entities: allEntities,
+        operations: config.operations,
+        policies: config.policies,
       } as HandlerContextConfig;
       await generateHandlerContextsFile(
         configWithEntities,

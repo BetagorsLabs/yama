@@ -1,7 +1,6 @@
 import type { PluginCLICommand } from "@betagors/yama-core";
 import type { DockerPluginAPI } from "./plugin.js";
 import { interactiveDockerComposeSetup } from "./interactive.js";
-import { interactiveDockerComposeSetupInk } from "./interactive-ink.jsx";
 
 /**
  * Create CLI commands for Docker plugin
@@ -83,24 +82,8 @@ export function createDockerCommands(api: DockerPluginAPI, pluginName: string): 
           // Get project info from API
           const projectInfo = api.getProjectInfo();
           
-          // Check if we should use Ink TUI
-          let composeConfig: Awaited<ReturnType<typeof interactiveDockerComposeSetup>>;
-          const useInk = process.stdout.isTTY && 
-                         process.env.TERM !== 'dumb' && 
-                         process.env.YAMA_NO_TUI !== '1' &&
-                         !process.env.CI;
-          
-          if (useInk) {
-            try {
-              composeConfig = await interactiveDockerComposeSetupInk(projectInfo);
-            } catch (error) {
-              // Fallback to inquirer if Ink fails
-              console.log("Falling back to text prompts...\n");
-              composeConfig = await interactiveDockerComposeSetup(projectInfo);
-            }
-          } else {
-            composeConfig = await interactiveDockerComposeSetup(projectInfo);
-          }
+          // Use inquirer for interactive setup
+          const composeConfig = await interactiveDockerComposeSetup(projectInfo);
           
           // Update plugin config with compose settings
           const currentConfig = api.getConfig();
@@ -154,24 +137,8 @@ export function createDockerCommands(api: DockerPluginAPI, pluginName: string): 
           // Get project info from API
           const projectInfo = api.getProjectInfo();
           
-          // Check if we should use Ink TUI
-          let composeConfig: Awaited<ReturnType<typeof interactiveDockerComposeSetup>>;
-          const useInk = process.stdout.isTTY && 
-                         process.env.TERM !== 'dumb' && 
-                         process.env.YAMA_NO_TUI !== '1' &&
-                         !process.env.CI;
-          
-          if (useInk) {
-            try {
-              composeConfig = await interactiveDockerComposeSetupInk(projectInfo);
-            } catch (error) {
-              // Fallback to inquirer if Ink fails
-              console.log("Falling back to text prompts...\n");
-              composeConfig = await interactiveDockerComposeSetup(projectInfo);
-            }
-          } else {
-            composeConfig = await interactiveDockerComposeSetup(projectInfo);
-          }
+          // Use inquirer for interactive setup
+          const composeConfig = await interactiveDockerComposeSetup(projectInfo);
           
           // Update plugin config with compose settings
           const currentConfig = api.getConfig();

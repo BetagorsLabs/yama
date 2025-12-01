@@ -54,6 +54,169 @@
         ]
       }
     },
+    "operations": {
+      "type": "object",
+      "description": "Operation definitions. Operations are first-class citizens with naming conventions for automatic path/method inference. Format: operationName: OutputType (shorthand) or operationName: { input, output, parent, handler, hooks, filter } (full config).",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?$",
+            "description": "Shorthand: Output schema name (e.g., 'Post', 'PostSummary[]'). Input, method, and path are inferred from operation name."
+          },
+          {
+            "type": "null",
+            "description": "Shorthand: No response body (204 No Content). Use for delete operations that don't return data."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "input": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "description": "Shorthand: 'id' for standard get-by-id, or schema name"
+                  },
+                  {
+                    "type": "object",
+                    "description": "Input schema definition",
+                    "additionalProperties": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "description": "Field type shorthand (e.g., 'uuid!', 'string?', 'number = 10')"
+                        },
+                        {
+                          "$ref": "#/definitions/schemaField"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?$",
+                    "description": "Output schema name (e.g., 'Post', 'PostSummary[]')"
+                  },
+                  {
+                    "type": "object",
+                    "description": "Inline output schema",
+                    "properties": {
+                      "fields": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "$ref": "#/definitions/schemaField"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "null",
+                    "description": "No response body (204 No Content)"
+                  }
+                ]
+              },
+              "parent": {
+                "type": "string",
+                "description": "Parent entity for nested resources (e.g., 'Post' for listComments creates /posts/{postId}/comments)"
+              },
+              "handler": {
+                "type": "string",
+                "description": "Path to custom handler file (only needed for complex logic)"
+              },
+              "hooks": {
+                "type": "object",
+                "description": "Lifecycle hooks for simple customization without full handler",
+                "properties": {
+                  "beforeCreate": {
+                    "type": "string",
+                    "description": "Path to hook handler"
+                  },
+                  "afterCreate": {
+                    "type": "string"
+                  },
+                  "beforeUpdate": {
+                    "type": "string"
+                  },
+                  "afterUpdate": {
+                    "type": "string"
+                  },
+                  "beforeDelete": {
+                    "type": "string"
+                  },
+                  "afterDelete": {
+                    "type": "string"
+                  }
+                }
+              },
+              "filter": {
+                "type": "object",
+                "description": "Auto-applied filter conditions (e.g., { published: true })",
+                "additionalProperties": true
+              },
+              "path": {
+                "type": "string",
+                "description": "Custom path override (overrides convention-based inference)"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "policies": {
+      "type": "object",
+      "description": "Reusable access control policies",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "auth": {
+            "oneOf": [
+              {
+                "type": "boolean",
+                "description": "Authentication required (true) or public (false)"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "required": {
+                    "type": "boolean",
+                    "description": "Authentication required"
+                  },
+                  "roles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Required roles (user must have at least one)"
+                  },
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Required permissions"
+                  },
+                  "check": {
+                    "type": "string",
+                    "description": "Path to custom policy check handler"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
     "database": {
       "type": "object",
       "description": "Database configuration",
@@ -374,6 +537,54 @@
         }
       }
     },
+    "rateLimits": {
+      "type": "object",
+      "description": "Rate limiting configuration per operation",
+      "properties": {
+        "default": {
+          "type": "object",
+          "description": "Default rate limit applied to all operations",
+          "properties": {
+            "window": {
+              "type": "string",
+              "description": "Time window (e.g., '15m', '1h', '1d')"
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of requests in the window"
+            }
+          },
+          "required": ["window", "max"]
+        },
+        "operations": {
+          "type": "object",
+          "description": "Operation-specific rate limits (overrides default)",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Reference to a named rate limit preset"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "window": {
+                    "type": "string",
+                    "description": "Time window (e.g., '15m', '1h')"
+                  },
+                  "max": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": ["window", "max"]
+              }
+            ]
+          }
+        }
+      }
+    },
     "cache": {
       "type": "object",
       "description": "Cache configuration (optional - cache is configured via plugins)",
@@ -381,6 +592,44 @@
         "provider": {
           "type": "string",
           "description": "Cache provider (e.g., 'redis', 'memcache') - configured via plugins"
+        },
+        "default": {
+          "type": "object",
+          "description": "Default cache settings",
+          "properties": {
+            "ttl": {
+              "type": "string",
+              "description": "Default TTL (e.g., '5m', '1h')"
+            }
+          }
+        },
+        "operations": {
+          "type": "object",
+          "description": "Operation-specific cache configuration",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "ttl": {
+                "type": "string",
+                "description": "Cache TTL for this operation"
+              },
+              "key": {
+                "type": "string",
+                "description": "Custom cache key pattern (e.g., 'post:{id}')"
+              },
+              "invalidateOn": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Operations that invalidate this cache"
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "Enable/disable caching for this operation (default: true)"
+              }
+            }
+          }
         }
       }
     },
@@ -1179,60 +1428,121 @@
       "additionalProperties": {
         "type": "object",
         "properties": {
+          "source": {
+            "type": "string",
+            "description": "Source entity/schema name. This schema is derived from the source, inheriting all fields. Use with 'fields' to override specific fields or add new ones, or with 'include' to select a subset."
+          },
+          "include": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Include only these fields from source (used with 'source'). If specified, only these fields are included."
+          },
           "fields": {
             "type": "object",
-            "description": "Schema fields. Supports new concise syntax (e.g., 'email: email(255)! unique', 'price: money(usd, min: 0)!', 'username: slug(3..100)! unique') or expanded object syntax.",
+            "description": "Schema fields. Supports new concise syntax (e.g., 'email: email(255)! unique', 'price: money(usd, min: 0)!', 'username: slug(3..100)! unique') or expanded object syntax. Can also use inline nested types (e.g., 'author: { id: uuid!, name: string! }').",
             "additionalProperties": {
               "oneOf": [
                 {
                   "type": "string",
-                  "description": "New concise syntax: 'type!' (required), 'type?' (nullable), 'type(params)' (with parameters), 'type[]' (array), 'type(min..max)' (range), 'type = default' (default value). Types: string, text, email, url, phone, slug, uuid, int, int8, int16, int32, int64, uint, decimal(p,s), money(currency), float, double, boolean, date, time, timestamp, timestamptz, timestamplocal, interval, json, jsonb, binary, base64, enum(values...). Modifiers: readonly, unique, indexed, writeOnly, sensitive, generated, autoUpdate. Examples: 'email: email(255)! unique', 'price: money(usd, min: 0)!', 'username: slug(3..100)! unique', 'age: int(0..120)', 'tags: string[](max: 10)', 'createdAt: timestamp readonly = now()'"
+                  "description": "New concise syntax: 'type!' (required), 'type?' (nullable), 'type(params)' (with parameters), 'type[]' (array), 'type(min..max)' (range), 'type = default' (default value). Types: string, text, email, url, phone, slug, uuid, int, int8, int16, int32, int64, uint, decimal(p,s), money(currency), float, double, boolean, date, time, timestamp, timestamptz, timestamplocal, interval, json, jsonb, binary, base64, enum(values...). Modifiers: readonly, unique, indexed, writeOnly, sensitive, generated, autoUpdate. Examples: 'email: email(255)! unique', 'price: money(usd, min: 0)!', 'username: slug(3..100)! unique', 'age: int(0..120)', 'tags: string[](max: 10)', 'createdAt: timestamp readonly = now()'. Inline nested types: 'author: { id: uuid!, name: string! }'"
                 },
                 {
                   "$ref": "#/definitions/schemaField"
+                },
+                {
+                  "type": "object",
+                  "description": "Inline nested type definition",
+                  "properties": {
+                    "fields": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/definitions/schemaField"
+                          }
+                        ]
+                      }
+                    }
+                  }
                 }
               ]
             }
           },
           "computed": {
-            "$ref": "#/properties/entities/additionalProperties/properties/computed"
+            "type": "object",
+            "description": "Computed fields (virtual fields calculated from other fields or expressions)",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "description": "Computed field expression (e.g., '{{firstName}} {{lastName}}', 'count(comments)', 'avg(ratings)')"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string",
+                      "description": "Computed field expression"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["string", "number", "integer", "boolean", "timestamp"],
+                      "description": "Computed field type"
+                    }
+                  },
+                  "required": ["expression"]
+                }
+              ]
+            }
           },
           "variants": {
             "$ref": "#/properties/entities/additionalProperties/properties/variants"
           },
           "database": {
-            "type": "object",
-            "description": "Database-specific configuration",
-            "properties": {
-              "table": {
+            "oneOf": [
+              {
                 "type": "string",
-                "description": "Database table name (for schemas that map to database tables)"
+                "description": "Shorthand: Database table name"
               },
-              "indexes": {
-                "type": "array",
-                "description": "Database indexes",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "fields": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
+              {
+                "type": "object",
+                "description": "Database-specific configuration",
+                "properties": {
+                  "table": {
+                    "type": "string",
+                    "description": "Database table name (for schemas that map to database tables)"
+                  },
+                  "indexes": {
+                    "type": "array",
+                    "description": "Database indexes",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fields": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "unique": {
+                          "type": "boolean"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
                       }
-                    },
-                    "unique": {
-                      "type": "boolean"
-                    },
-                    "name": {
-                      "type": "string"
                     }
                   }
                 }
               }
-            }
+            ]
           }
-        },
-        "required": ["fields"]
+        }
       }
     },
     "apis": {
@@ -1253,15 +1563,71 @@
                   "type": "string",
                   "description": "Base path prefix for all endpoints (e.g., '/api/v1')"
                 },
+                "defaultPolicy": {
+                  "type": "string",
+                  "description": "Default policy name to apply to all operations (default: 'public')"
+                },
+                "operations": {
+                  "type": "array",
+                  "description": "Operations to expose in this API. Can be operation names (strings) or objects with policy/path overrides.",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "description": "Operation name (uses default policy)"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "operation": {
+                            "type": "string",
+                            "description": "Operation name"
+                          },
+                          "policy": {
+                            "type": "string",
+                            "description": "Policy name to apply (overrides defaultPolicy)"
+                          },
+                          "path": {
+                            "type": "string",
+                            "description": "Custom path override (overrides convention-based path)"
+                          }
+                        },
+                        "required": ["operation"]
+                      }
+                    ]
+                  }
+                },
+                "exclude": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Operations to exclude from this API"
+                },
+                "include": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "enum": ["all"],
+                      "description": "Include all operations"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Specific operations to include"
+                    }
+                  ]
+                },
                 "endpoints": {
                   "type": "array",
-                  "description": "REST API endpoints",
+                  "description": "REST API endpoints (legacy - use operations instead)",
                   "items": {
                     "$ref": "#/definitions/restEndpoint"
                   }
                 }
-              },
-              "required": ["endpoints"]
+              }
             },
             {
               "type": "object",
@@ -1278,19 +1644,176 @@
                       "type": "string",
                       "description": "Base path prefix for all endpoints in this config"
                     },
+                    "defaultPolicy": {
+                      "type": "string",
+                      "description": "Default policy name to apply to all operations (default: 'public')"
+                    },
+                    "operations": {
+                      "type": "array",
+                      "description": "Operations to expose in this API",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "operation": {
+                                "type": "string"
+                              },
+                              "policy": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["operation"]
+                          }
+                        ]
+                      }
+                    },
+                    "exclude": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "include": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "enum": ["all"]
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      ]
+                    },
+                    "paths": {
+                      "type": "object",
+                      "description": "Custom path overrides per operation",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
                     "endpoints": {
                       "type": "array",
-                      "description": "REST API endpoints",
+                      "description": "REST API endpoints (legacy - use operations instead)",
                       "items": {
                         "$ref": "#/definitions/restEndpoint"
                       }
                     }
-                  },
-                  "required": ["endpoints"]
+                  }
                 }
               }
             }
           ]
+        },
+        "graphql": {
+          "type": "object",
+          "description": "GraphQL API configurations",
+          "patternProperties": {
+            "^[a-zA-Z0-9_]+$": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "GraphQL endpoint path (e.g., '/graphql')"
+                },
+                "defaultPolicy": {
+                  "type": "string",
+                  "description": "Default policy for all operations"
+                },
+                "queries": {
+                  "type": "array",
+                  "description": "Operations to expose as Query fields",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "operation": {
+                            "type": "string"
+                          },
+                          "policy": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["operation"]
+                      }
+                    ]
+                  }
+                },
+                "mutations": {
+                  "type": "array",
+                  "description": "Operations to expose as Mutation fields",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "operation": {
+                            "type": "string"
+                          },
+                          "policy": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["operation"]
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": ["path"]
+            }
+          }
+        },
+        "mcp": {
+          "type": "object",
+          "description": "MCP (Model Context Protocol) API configurations",
+          "patternProperties": {
+            "^[a-zA-Z0-9_]+$": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "MCP server name"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "MCP server description"
+                },
+                "tools": {
+                  "type": "object",
+                  "description": "Operation-specific MCP tool configurations",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "description": {
+                        "type": "string"
+                      },
+                      "requiresConfirmation": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              },
+              "required": ["name"]
+            }
+          }
         }
       }
     },

@@ -350,7 +350,7 @@ export async function getExamples(
 
   console.log("\n✨ Yama project initialized!");
   console.log("\nNext steps:");
-  console.log("  1. Install dependencies: npm install @betagors/yama-runtime-node");
+  console.log("  1. Install dependencies: npm install @betagors/yama-node");
   console.log("  2. Start dev server: yama dev");
   console.log("  3. Generate types: yama generate");
 }

@@ -3,6 +3,8 @@ import type { YamaEntities } from "./entities.js";
 import { entitiesToSchemas, mergeSchemas } from "./entities.js";
 import { normalizeQueryOrParams, normalizeBodyDefinition, parseSchemaFieldDefinition } from "./schemas.js";
 import { normalizeApisConfig, type NormalizedEndpoint } from "./apis/index.js";
+import type { YamaOperations } from "./operations/types.js";
+import { parseOperations } from "./operations/index.js";
 
 /**
  * Endpoint definition for handler context generation
@@ -37,6 +39,8 @@ export interface HandlerContextConfig {
   apis?: {
     rest?: any;
   };
+  operations?: YamaOperations;
+  policies?: import("./policies/types.js").YamaPolicies;
 }
 
 /**
@@ -193,24 +197,96 @@ function fieldToTypeScript(
 
 /**
  * Generate TypeScript type definition for a schema
+ * Handles source inheritance, computed fields, and inline nested types
  */
 function generateSchemaType(
   schemaName: string,
   schemaDef: SchemaDefinition,
   schemas?: YamaSchemas,
+  entities?: YamaEntities,
   visited: Set<string> = new Set()
 ): string {
+  if (visited.has(schemaName)) {
+    throw new Error(`Circular reference detected in schema: ${schemaName}`);
+  }
+  visited.add(schemaName);
+  
   const fields: string[] = [];
   
-  if (!schemaDef.fields || typeof schemaDef.fields !== 'object') {
-    return `export interface ${schemaName} {}`;
+  // Handle source inheritance
+  if ((schemaDef as any).source && schemas) {
+    const sourceName = (schemaDef as any).source;
+    const sourceSchema = schemas[sourceName];
+    if (sourceSchema) {
+      // Include fields from source
+      const includeFields = (schemaDef as any).include;
+      if (Array.isArray(includeFields)) {
+        // Only include specified fields
+        for (const fieldName of includeFields) {
+          if (sourceSchema.fields[fieldName]) {
+            const field = sourceSchema.fields[fieldName];
+            const fieldType = fieldToTypeScript(field, 1, schemas, new Set(visited));
+            const optional = field.required ? "" : "?";
+            fields.push(`  ${fieldName}${optional}: ${fieldType};`);
+          }
+        }
+      } else {
+        // Include all fields from source
+        for (const [fieldName, field] of Object.entries(sourceSchema.fields)) {
+          const fieldType = fieldToTypeScript(field, 1, schemas, new Set(visited));
+          const optional = field.required ? "" : "?";
+          fields.push(`  ${fieldName}${optional}: ${fieldType};`);
+        }
+      }
+    }
   }
   
-  for (const [fieldName, field] of Object.entries(schemaDef.fields)) {
-    const fieldType = fieldToTypeScript(field, 1, schemas, visited);
-    const optional = field.required ? "" : "?";
-    fields.push(`  ${fieldName}${optional}: ${fieldType};`);
+  // Add fields from this schema (override source fields)
+  if (schemaDef.fields && typeof schemaDef.fields === 'object') {
+    for (const [fieldName, field] of Object.entries(schemaDef.fields)) {
+      // Handle inline nested types
+      if (typeof field === "object" && "properties" in field && field.properties) {
+        // Inline nested type
+        const nestedFields: string[] = [];
+        for (const [propName, propField] of Object.entries(field.properties)) {
+          const propType = fieldToTypeScript(propField, 2, schemas, new Set(visited));
+          const propFieldNormalized = typeof propField === "string" 
+            ? parseSchemaFieldDefinition(propName, propField)
+            : propField;
+          const optional = propFieldNormalized.required ? "" : "?";
+          nestedFields.push(`    ${propName}${optional}: ${propType};`);
+        }
+        const fieldOptional = field.required ? "" : "?";
+        fields.push(`  ${fieldName}${fieldOptional}: {\n${nestedFields.join("\n")}\n  };`);
+      } else {
+        const fieldType = fieldToTypeScript(field, 1, schemas, new Set(visited));
+        const optional = field.required ? "" : "?";
+        fields.push(`  ${fieldName}${optional}: ${fieldType};`);
+      }
+    }
   }
+  
+  // Add computed fields
+  if (schemaDef.computed && typeof schemaDef.computed === 'object') {
+    for (const [fieldName, computedDef] of Object.entries(schemaDef.computed)) {
+      // Determine computed field type
+      let computedType = "unknown";
+      if (typeof computedDef === "object" && computedDef.type) {
+        computedType = computedDef.type;
+      } else {
+        // Try to infer from expression
+        const expr = typeof computedDef === "string" ? computedDef : computedDef.expression;
+        if (expr.includes("count(") || expr.includes("sum(") || expr.includes("avg(")) {
+          computedType = "number";
+        } else if (expr.includes("{{") && expr.includes("}}")) {
+          computedType = "string";
+        }
+      }
+      fields.push(`  ${fieldName}: ${computedType};`);
+    }
+  }
+  
+  visited.delete(schemaName);
   
   return `export interface ${schemaName} {\n${fields.join("\n")}\n}`;
 }
@@ -241,7 +317,7 @@ export function generateTypes(
   const typeDefinitions: string[] = [];
   
   for (const [schemaName, schemaDef] of Object.entries(allSchemas)) {
-    typeDefinitions.push(generateSchemaType(schemaName, schemaDef, allSchemas));
+    typeDefinitions.push(generateSchemaType(schemaName, schemaDef, allSchemas, entities));
   }
   
   return imports + typeDefinitions.join("\n\n") + "\n";
@@ -373,8 +449,21 @@ ${dbImport}import type * as Types from "${typesImportPath}";
 ${repositoryTypesImport}
 `;
 
-  // Normalize APIs config
-  const normalizedApis = normalizeApisConfig({ apis: config.apis });
+  // Normalize APIs config (includes operations conversion)
+  // Convert schemas to entities format for normalizer
+  const schemasAsEntities = config.schemas ? Object.fromEntries(
+    Object.entries(config.schemas).map(([name, schema]) => [
+      name,
+      { ...schema, fields: schema.fields || {} }
+    ])
+  ) : undefined;
+  
+  const normalizedApis = normalizeApisConfig({ 
+    apis: config.apis,
+    operations: config.operations,
+    policies: config.policies,
+    schemas: schemasAsEntities as any,
+  });
   const allEndpoints = normalizedApis.rest.flatMap(restConfig => restConfig.endpoints);
 
   if (allEndpoints.length === 0) {

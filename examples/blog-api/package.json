@@ -17,7 +17,7 @@
     "@betagors/yama-core": "file:../../packages/core",
     "@betagors/yama-pglite": "file:../../packages/pglite",
     "@betagors/yama-postgres": "file:../../packages/postgres",
-    "@betagors/yama-runtime-node": "file:../../packages/runtime-node",
+    "@betagors/yama-node": "file:../../packages/node",
     "drizzle-orm": "^0.30.0",
     "postgres": "^3.4.3"
   },

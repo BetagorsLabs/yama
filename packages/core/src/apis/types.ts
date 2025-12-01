@@ -21,6 +21,11 @@ export interface RestEndpointDefinition {
   // REST API configuration
   export interface RestApiConfig extends ApiConfig {
     endpoints?: RestEndpointDefinition[];
+    defaultPolicy?: string;
+    operations?: Array<string | { operation: string; policy?: string; path?: string }>;
+    exclude?: string[];
+    include?: "all" | string[];
+    paths?: Record<string, string>;
   }
   
   // Multiple named REST configs

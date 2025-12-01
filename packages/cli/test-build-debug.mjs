@@ -37,7 +37,7 @@ if (testFile) {
       target: 'node18',
       jsx: 'automatic',
       jsxImportSource: 'react',
-      external: ['react', 'ink'],
+      external: ['react'],
       logLevel: 'verbose',
     });
     console.log('✅ Test build succeeded');

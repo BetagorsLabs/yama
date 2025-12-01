@@ -32,6 +32,8 @@ export interface YamaConfig {
   schemas?: YamaSchemas;
   entities?: YamaEntities;
   database?: DatabaseConfig;
+  operations?: any; // YamaOperations
+  policies?: any; // YamaPolicies
   auth?: {
     providers?: Array<{
       type: "jwt" | "api-key";
@@ -444,7 +446,21 @@ export function generateOpenAPI(config: YamaConfig): OpenAPISpec {
     console.log(`  Config.apis.rest keys: ${Object.keys(config.apis.rest).join(', ')}`);
   }
   
-  const normalizedApis = normalizeApisConfig({ apis: config.apis });
+  // Normalize APIs config - includes operations conversion to endpoints
+  // Convert schemas to entities format for normalizer (they're compatible)
+  const schemasAsEntities = config.schemas ? Object.fromEntries(
+    Object.entries(config.schemas).map(([name, schema]) => [
+      name,
+      { ...schema, fields: schema.fields || {} }
+    ])
+  ) : undefined;
+  
+  const normalizedApis = normalizeApisConfig({ 
+    apis: config.apis,
+    operations: config.operations,
+    policies: config.policies,
+    schemas: (schemasAsEntities as any) || config.entities,
+  });
   console.log(`  Normalized APIs: ${normalizedApis.rest.length} REST config(s) found`);
   
   const allEndpoints = normalizedApis.rest.flatMap(restConfig => {

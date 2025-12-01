@@ -50,7 +50,7 @@ packages/
         server.test.ts
       plugins/
         validator.test.ts
-  runtime-node/
+  node/
     src/
       server/
         fastify-adapter.test.ts

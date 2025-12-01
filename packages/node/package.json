@@ -1,8 +1,8 @@
 {
-  "name": "@betagors/yama-docker",
+  "name": "@betagors/yama-node",
   "version": "0.1.0-alpha.0",
   "type": "module",
-  "description": "Yama Docker and Docker Compose plugin for containerization",
+  "description": "Yama Node.js runtime adapter",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -14,23 +14,16 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/betagors/yama.git",
-    "directory": "packages/docker"
+    "directory": "packages/node"
   },
   "keywords": [
     "yama",
-    "docker",
-    "docker-compose",
-    "containerization",
-    "deployment",
-    "plugin"
+    "runtime",
+    "node",
+    "adapter",
+    "backend"
   ],
   "license": "MPL-2.0",
-  "yama": {
-    "pluginApi": "1.0",
-    "yamaCore": "^0.1.0",
-    "category": "deployment",
-    "entryPoint": "./dist/plugin.js"
-  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -w -p tsconfig.build.json",
@@ -43,23 +36,21 @@
   },
   "dependencies": {
     "@betagors/yama-core": "workspace:*",
-    "inquirer": "^10.2.2",
-    "js-yaml": "^4.1.0",
-    "zod": "^3.22.4"
+    "@betagors/yama-openapi": "workspace:*",
+    "@betagors/yama-postgres": "workspace:*",
+    "@betagors/yama-fastify": "workspace:*",
+    "js-yaml": "^4.1.1",
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
-    "@types/inquirer": "^9.0.7",
+    "rimraf": "^5.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^1.0.0",
-    "rimraf": "^5.0.0",
     "vitest": "^1.0.0"
   },
   "engines": {
     "node": ">=18"
   }
 }
-
-
-
 

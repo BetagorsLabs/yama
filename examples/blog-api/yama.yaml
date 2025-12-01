@@ -6,16 +6,17 @@ project:
 plugins:
   - "@betagors/yama-pglite"
 
+# ============================================================================
+# SCHEMAS: Data definitions
+# ============================================================================
 schemas:
+  # Database entities
   Author:
-    database:
-      table: authors
-    crud:
-      enabled: false
+    database: authors
     fields:
       id: uuid!
       name: string!
-      email: string! unique  # Inline constraint: unique
+      email: string! unique
       bio: text?
       createdAt: timestamp = now
       updatedAt: timestamp = now
@@ -24,10 +25,8 @@ schemas:
     database:
       table: posts
       indexes:
-        - fields: [authorId, publishedAt]  # authorId auto-generated from inline relation
+        - fields: [authorId, publishedAt]
         - fields: [published]
-    crud:
-      enabled: false
     fields:
       id: uuid!
       title: string! indexed
@@ -35,7 +34,6 @@ schemas:
       excerpt: string?
       published: boolean = false
       publishedAt: timestamp?
-      # Inline relation - auto-generates authorId: uuid!
       author: Author! cascade
       createdAt: timestamp = now
       updatedAt: timestamp = now
@@ -44,125 +42,209 @@ schemas:
     database:
       table: comments
       indexes:
-        - fields: [postId]  # postId auto-generated from inline relation
-    crud:
-      enabled: false
+        - fields: [postId]
+        - fields: [postId, authorEmail]
+          unique: true
     fields:
       id: uuid!
       content: text!
       authorName: string!
       authorEmail: string!
-      # Inline relation - auto-generates postId: uuid!
       post: Post! cascade
       createdAt: timestamp = now
       updatedAt: timestamp = now
 
-  PostWithAuthor:
+  # API schemas (views/DTOs)
+  PostSummary:
+    source: Post
+    fields:
+      id: uuid!
+      title: string!
+      excerpt: string?
+      published: boolean!
+      authorName: string!
+    computed:
+      authorName: "{{author.name}}"
+
+  PostDetail:
+    source: Post
     fields:
       id: uuid!
       title: string!
       content: string!
-      excerpt: string!
+      excerpt: string?
       published: boolean!
-      publishedAt: string?
+      publishedAt: timestamp?
       author: Author!
-      createdAt: string!
-      updatedAt: string!
+      createdAt: timestamp!
+      updatedAt: timestamp!
 
-  DeleteResponse:
+  AuthorWithPosts:
+    source: Author
     fields:
-      success: boolean!
+      id: uuid!
+      name: string!
+      email: string!
+      bio: string?
+      posts: PostSummary[]
 
+# ============================================================================
+# OPERATIONS: Business logic definitions
+# ============================================================================
+operations:
+  # Posts - Standard CRUD
+  listPosts: PostSummary[]
+  getPost: PostDetail
+  createPost: Post
+  updatePost: Post
+  deletePost: ~
+
+  # Posts - Custom operations
+  searchPosts:
+    input:
+      q: string!
+      published: boolean?
+      limit: number = 20
+      offset: number = 0
+    output: PostSummary[]
+
+  listPublishedPosts:
+    output: PostSummary[]
+    filter:
+      published: true
+
+  publishPost:
+    input:
+      id: uuid!
+    output: Post
+    handler: src/handlers/publishPost.ts
+
+  unpublishPost:
+    input:
+      id: uuid!
+    output: Post
+    handler: src/handlers/unpublishPost.ts
+
+  # Authors
+  listAuthors: Author[]
+  getAuthor: AuthorWithPosts
+  createAuthor: Author
+  updateAuthor: Author
+
+  # Comments - Nested under Post
+  listComments:
+    parent: Post
+    output: Comment[]
+
+  getComment:
+    parent: Post
+    output: Comment
+
+  createComment:
+    parent: Post
+    input:
+      content: string!
+      authorName: string!
+      authorEmail: string!
+    output: Comment
+
+  deleteComment:
+    parent: Post
+    output: ~
+
+  # Author posts (nested)
+  listAuthorPosts:
+    parent: Author
+    output: PostSummary[]
+
+# ============================================================================
+# POLICIES: Reusable access control
+# ============================================================================
+policies:
+  public:
+    auth: false
+
+  authenticated:
+    auth: true
+
+  author:
+    auth:
+      required: true
+      roles: [author, admin]
+
+  admin:
+    auth:
+      required: true
+      roles: [admin]
+
+# ============================================================================
+# APIS: Expose operations
+# ============================================================================
 apis:
   rest:
-    default:
+    public:
       basePath: /api/v1
-      endpoints:
-        - method: GET
-          path: /posts
-          response: PostWithAuthor[]
-          query:
-            published: boolean?
-            authorId: uuid?
-            limit: number = 10
-            offset: number = 0
-          handler: src/handlers/listPosts.ts
+      defaultPolicy: public
+      operations:
+        # Public read operations
+        - listPosts
+        - getPost
+        - searchPosts
+        - listPublishedPosts
+        - listAuthors
+        - getAuthor
+        - listComments
+        - getComment
+        - listAuthorPosts
+        
+        # Protected write operations
+        - createPost: author
+        - updatePost: author
+        - publishPost: author
+        - unpublishPost: author
+        - createComment: authenticated
+        - createAuthor: admin
+        
+      # Exclude from public API
+      exclude:
+        - deletePost
+        - deleteComment
 
-        - method: POST
-          path: /posts
-          response: Post
-          body: Post
-          handler: src/handlers/createPost.ts
+    admin:
+      basePath: /api/admin
+      defaultPolicy: admin
+      operations:
+        - all
 
-        - method: GET
-          path: /posts/{id}
-          response: PostWithAuthor
-          params:
-            id: uuid!
-          handler: src/handlers/getPost.ts
+# ============================================================================
+# RATE LIMITS
+# ============================================================================
+rateLimits:
+  default:
+    window: 15m
+    max: 100
+  operations:
+    createPost:
+      window: 1h
+      max: 10
+    createComment:
+      window: 1h
+      max: 20
 
-        - method: PUT
-          path: /posts/{id}
-          response: Post
-          body: Post
-          params:
-            id: uuid!
-          handler: src/handlers/updatePost.ts
-
-        - method: DELETE
-          path: /posts/{id}
-          response: DeleteResponse
-          params:
-            id: uuid!
-          handler: src/handlers/deletePost.ts
-
-        - method: POST
-          path: /posts/{id}/publish
-          response: Post
-          params:
-            id: uuid!
-          handler: src/handlers/publishPost.ts
-
-        - method: GET
-          path: /posts/{id}/comments
-          response: Comment[]
-          params:
-            id: uuid!
-          handler: src/handlers/getPostComments.ts
-
-        - method: POST
-          path: /posts/{id}/comments
-          response: Comment
-          body:
-            fields:
-              content: string!
-              authorName: string!
-              authorEmail: string!
-          params:
-            id: uuid!
-          handler: src/handlers/createComment.ts
-
-        - method: GET
-          path: /authors
-          response: Author[]
-          handler: src/handlers/listAuthors.ts
-
-        - method: POST
-          path: /authors
-          response: Author
-          body: Author
-          handler: src/handlers/createAuthor.ts
-
-        - method: GET
-          path: /authors/{id}
-          response: Author
-          params:
-            id: uuid!
-          handler: src/handlers/getAuthor.ts
-
-        - method: GET
-          path: /authors/{id}/posts
-          response: Post[]
-          params:
-            id: uuid!
-          handler: src/handlers/getAuthorPosts.ts
+# ============================================================================
+# CACHE
+# ============================================================================
+cache:
+  default:
+    ttl: 5m
+  operations:
+    listPosts:
+      ttl: 1m
+      invalidateOn: [createPost, updatePost, deletePost, publishPost]
+    getPost:
+      ttl: 5m
+      key: "post:{id}"
+      invalidateOn: [updatePost, deletePost, publishPost]
+    listPublishedPosts:
+      ttl: 2m
+      invalidateOn: [publishPost, unpublishPost]

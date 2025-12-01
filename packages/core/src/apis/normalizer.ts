@@ -1,7 +1,19 @@
 import type { ApisConfig, NormalizedApisConfig, NormalizedRestConfig, RestApiConfig, RestApisConfig } from './types.js';
 import { ApiEndpointParser } from './parser.js';
+import { parseOperations, generateEndpointsFromOperations } from '../operations/index.js';
+import { resolvePolicy } from '../policies/index.js';
+import type { YamaEntities } from '../entities.js';
+import type { YamaOperations } from '../operations/types.js';
+import type { YamaPolicies } from '../policies/types.js';
 
-export function normalizeApisConfig(config: { apis?: ApisConfig }): NormalizedApisConfig {
+export function normalizeApisConfig(
+  config: { 
+    apis?: ApisConfig;
+    operations?: YamaOperations;
+    policies?: YamaPolicies;
+    schemas?: YamaEntities;
+  }
+): NormalizedApisConfig {
   const result: NormalizedApisConfig = {
     rest: [],
   };
@@ -22,7 +34,13 @@ export function normalizeApisConfig(config: { apis?: ApisConfig }): NormalizedAp
     const singleConfig = restConfig as RestApiConfig;
     // Skip if disabled
     if (singleConfig.enabled !== false) {
-      result.rest.push(normalizeRestConfig('default', singleConfig));
+      result.rest.push(normalizeRestConfig(
+        'default', 
+        singleConfig,
+        config.operations,
+        config.policies,
+        config.schemas
+      ));
     }
   } else {
     // Multiple named REST configs (object with string keys)
@@ -38,8 +56,15 @@ export function normalizeApisConfig(config: { apis?: ApisConfig }): NormalizedAp
       }
       if (restConfigEntry) {
         const endpointCount = restConfigEntry.endpoints?.length || 0;
-        console.log(`[normalizeApisConfig] Processing config "${name}" with ${endpointCount} endpoint(s)`);
-        result.rest.push(normalizeRestConfig(name, restConfigEntry));
+        const operationCount = restConfigEntry.operations?.length || 0;
+        console.log(`[normalizeApisConfig] Processing config "${name}" with ${endpointCount} endpoint(s) and ${operationCount} operation(s)`);
+        result.rest.push(normalizeRestConfig(
+          name, 
+          restConfigEntry,
+          config.operations,
+          config.policies,
+          config.schemas
+        ));
       }
     }
   }
@@ -50,12 +75,102 @@ export function normalizeApisConfig(config: { apis?: ApisConfig }): NormalizedAp
 
 function normalizeRestConfig(
   name: string,
-  config: RestApiConfig
+  config: RestApiConfig,
+  operations?: YamaOperations,
+  policies?: YamaPolicies,
+  allEntities?: YamaEntities
 ): NormalizedRestConfig {
+  const endpoints: any[] = [];
+  
+  // Process operations if defined
+  if (operations && config.operations) {
+    const availableEntities = allEntities ? new Set(Object.keys(allEntities)) : undefined;
+    const parsedOps = parseOperations(operations, availableEntities);
+    
+    // Determine which operations to include
+    let opsToInclude = parsedOps;
+    if (config.include === "all") {
+      // Include all operations
+      opsToInclude = parsedOps;
+    } else if (Array.isArray(config.include)) {
+      // Include only specified operations
+      opsToInclude = parsedOps.filter(op => config.include!.includes(op.name));
+    } else if (Array.isArray(config.exclude)) {
+      // Exclude specified operations
+      opsToInclude = parsedOps.filter(op => !config.exclude!.includes(op.name));
+    } else if (Array.isArray(config.operations)) {
+      // Include only operations listed in config.operations
+      const opNames = new Set(
+        config.operations.map(op => 
+          typeof op === "string" ? op : op.operation
+        )
+      );
+      opsToInclude = parsedOps.filter(op => opNames.has(op.name));
+    }
+    
+    // Generate endpoints from operations
+    const operationEndpoints = generateEndpointsFromOperations(opsToInclude, config.basePath);
+    
+    // Apply policies to endpoints
+    const defaultPolicy = resolvePolicy(config.defaultPolicy, policies);
+    
+    // Create a map of operation names to their configs
+    const opConfigMap = new Map<string, { policy?: string; path?: string }>();
+    if (Array.isArray(config.operations)) {
+      for (const op of config.operations) {
+        if (typeof op === "string") {
+          opConfigMap.set(op, {});
+        } else {
+          opConfigMap.set(op.operation, { policy: op.policy, path: op.path });
+        }
+      }
+    }
+    
+    for (const endpoint of operationEndpoints) {
+      // Get operation name from endpoint metadata or match by description
+      const operationName = (endpoint as any)._operationName;
+      if (!operationName) {
+        // Fallback: try to extract from description or skip
+        endpoints.push(endpoint);
+        continue;
+      }
+      
+      // Get operation config
+      const opConfig = opConfigMap.get(operationName) || {};
+      
+      // Determine policy
+      const policyName = opConfig.policy || config.defaultPolicy || "public";
+      const policy = resolvePolicy(policyName, policies);
+      
+      // Apply policy to endpoint
+      endpoint.auth = {
+        required: policy.auth.required,
+        roles: policy.auth.roles,
+        permissions: policy.auth.permissions,
+        handler: policy.auth.check,
+      };
+      
+      // Apply custom path if specified
+      if (opConfig.path) {
+        endpoint.path = config.basePath 
+          ? `${config.basePath}${opConfig.path}`
+          : opConfig.path;
+      } else if (config.paths && typeof config.paths === "object" && config.paths[operationName]) {
+        // Apply path override from paths object
+        endpoint.path = config.basePath
+          ? `${config.basePath}${config.paths[operationName]}`
+          : config.paths[operationName];
+      }
+      
+      endpoints.push(endpoint);
+    }
+  }
+  
+  // Process legacy endpoints if defined
   const rawEndpoints = config.endpoints || [];
   console.log(`[normalizeRestConfig] Config "${name}": Processing ${rawEndpoints.length} raw endpoint(s)`);
   
-  const endpoints = rawEndpoints.map((endpoint, index) => {
+  const legacyEndpoints = rawEndpoints.map((endpoint, index) => {
     try {
       const normalized = ApiEndpointParser.normalizeEndpoint(endpoint, {
         basePath: config.basePath,
@@ -67,6 +182,9 @@ function normalizeRestConfig(
       throw error;
     }
   });
+  
+  // Merge operation endpoints with legacy endpoints
+  endpoints.push(...legacyEndpoints);
 
   console.log(`[normalizeRestConfig] Config "${name}": Successfully normalized ${endpoints.length} endpoint(s)`);
   return {
