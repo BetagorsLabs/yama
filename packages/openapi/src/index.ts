@@ -3,7 +3,7 @@
  * Generates OpenAPI 3.0 specifications and other documentation formats from yama.yaml
  */
 
-import { schemaToJsonSchema, type YamaSchemas, type SchemaDefinition, type YamaEntities, type DatabaseConfig, entitiesToSchemas, mergeSchemas, normalizeApisConfig, normalizeBodyDefinition, normalizeQueryOrParams } from "@betagors/yama-core";
+import { schemaToJsonSchema, type YamaSchemas, type SchemaDefinition, type YamaEntities, type DatabaseConfig, entitiesToSchemas, mergeSchemas, normalizeApisConfig, normalizeBodyDefinition, normalizeQueryOrParams, generateCrudInputSchemas, generateArraySchema, generateAllCrudEndpoints, entityToSchema } from "@betagors/yama-core";
 
 export interface EndpointDefinition {
   path: string;
@@ -94,6 +94,13 @@ export interface OpenAPISpec {
     }>;
   };
   security?: Array<Record<string, string[]>>;
+}
+
+/**
+ * Generate input schema name (e.g., "CreatePostInput", "UpdatePostInput")
+ */
+function generateInputSchemaName(entityName: string, operation: "Create" | "Update"): string {
+  return `${operation}${entityName}Input`;
 }
 
 /**
@@ -241,6 +248,7 @@ function endpointToOpenAPIOperation(
 
   // Request body
   if (endpoint.body) {
+    console.log(`  [endpointToOpenAPIOperation] Processing body for ${endpoint.method} ${endpoint.path}: ${JSON.stringify(endpoint.body)}`);
     let schema: Record<string, unknown>;
 
     // Handle inline fields definition
@@ -279,9 +287,11 @@ function endpointToOpenAPIOperation(
           }
         } else if (schemas && schemas[bodyType]) {
           // Reference to a schema
+          console.log(`  [endpointToOpenAPIOperation] Found schema "${bodyType}" in available schemas`);
           schema = { $ref: `#/components/schemas/${bodyType}` };
         } else {
-          // Fallback to basic type
+          // Fallback to basic type - log warning if schema not found
+          console.warn(`⚠️  Warning: Body schema "${bodyType}" not found in available schemas. Available schemas: ${Object.keys(schemas || {}).slice(0, 10).join(', ')}${Object.keys(schemas || {}).length > 10 ? '...' : ''}`);
           schema = { type: yamaTypeToOpenAPIType(bodyType) };
         }
       } else {
@@ -297,6 +307,9 @@ function endpointToOpenAPIOperation(
         }
       }
     };
+    console.log(`  [endpointToOpenAPIOperation] Added requestBody with schema: ${JSON.stringify(schema)}`);
+  } else {
+    console.log(`  [endpointToOpenAPIOperation] No body found for ${endpoint.method} ${endpoint.path}`);
   }
 
   // Responses
@@ -411,7 +424,38 @@ export function generateOpenAPI(config: YamaConfig): OpenAPISpec {
 
   // Convert entities to schemas and merge with explicit schemas
   const entitySchemas = config.entities ? entitiesToSchemas(config.entities) : {};
-  const allSchemas = mergeSchemas(config.schemas, entitySchemas);
+  
+  // Generate CRUD input schemas (CreateXInput, UpdateXInput) and array schemas for entities with CRUD enabled
+  const crudInputSchemas: YamaSchemas = {};
+  const crudArraySchemas: YamaSchemas = {};
+  
+  if (config.entities) {
+    for (const [entityName, entityDef] of Object.entries(config.entities)) {
+      // Check if CRUD is enabled (handles both boolean and object with enabled property)
+      const crudEnabled = typeof entityDef.crud === 'boolean' 
+        ? entityDef.crud 
+        : entityDef.crud && entityDef.crud.enabled !== false;
+      
+      if (crudEnabled) {
+        const inputSchemas = generateCrudInputSchemas(entityName, entityDef);
+        const arraySchemas = generateArraySchema(entityName, entityDef);
+        Object.assign(crudInputSchemas, inputSchemas);
+        Object.assign(crudArraySchemas, arraySchemas);
+        console.log(`  Generated CRUD input schemas for ${entityName}: ${Object.keys(inputSchemas).join(', ')}`);
+      }
+    }
+  }
+  
+  if (Object.keys(crudInputSchemas).length > 0) {
+    console.log(`  Total CRUD input schemas generated: ${Object.keys(crudInputSchemas).join(', ')}`);
+  }
+  
+  // Merge schemas in order: entity schemas -> CRUD input schemas -> CRUD array schemas -> explicit schemas
+  const mergedWithInputs = mergeSchemas(crudInputSchemas, entitySchemas);
+  const mergedWithArrays = mergeSchemas(crudArraySchemas, mergedWithInputs);
+  const allSchemas = mergeSchemas(config.schemas, mergedWithArrays);
+  
+  console.log(`  Total schemas available: ${Object.keys(allSchemas).length} (including ${Object.keys(crudInputSchemas).length} CRUD input schemas)`);
 
   // Convert all schemas to OpenAPI schemas
   for (const [schemaName, schemaDef] of Object.entries(allSchemas)) {
@@ -446,6 +490,35 @@ export function generateOpenAPI(config: YamaConfig): OpenAPISpec {
     console.log(`  Config.apis.rest keys: ${Object.keys(config.apis.rest).join(', ')}`);
   }
   
+  // Generate CRUD endpoints from entities (if they have crud enabled)
+  let crudEndpoints: EndpointDefinition[] = [];
+  if (config.entities) {
+    console.log(`  Checking ${Object.keys(config.entities).length} entity/entities for CRUD generation...`);
+    const generatedCrudEndpoints = generateAllCrudEndpoints(config.entities);
+    console.log(`  generateAllCrudEndpoints returned ${generatedCrudEndpoints.length} endpoint(s)`);
+    if (generatedCrudEndpoints.length > 0) {
+      // Convert CrudEndpoint[] to EndpointDefinition[] format
+      crudEndpoints = generatedCrudEndpoints.map(ep => {
+        const converted = {
+          path: ep.path,
+          method: ep.method,
+          description: ep.description,
+          params: ep.params,
+          query: ep.query,
+          body: ep.body,
+          response: ep.response,
+          auth: ep.auth,
+        };
+        // Debug: log body for POST/PUT/PATCH endpoints
+        if (['POST', 'PUT', 'PATCH'].includes(ep.method) && ep.body) {
+          console.log(`  CRUD endpoint ${ep.method} ${ep.path}: body = ${JSON.stringify(ep.body)}`);
+        }
+        return converted;
+      });
+      console.log(`  Generated ${crudEndpoints.length} CRUD endpoint(s) from entities`);
+    }
+  }
+  
   // Normalize APIs config - includes operations conversion to endpoints
   // Convert schemas to entities format for normalizer (they're compatible)
   const schemasAsEntities = config.schemas ? Object.fromEntries(
@@ -463,11 +536,100 @@ export function generateOpenAPI(config: YamaConfig): OpenAPISpec {
   });
   console.log(`  Normalized APIs: ${normalizedApis.rest.length} REST config(s) found`);
   
-  const allEndpoints = normalizedApis.rest.flatMap(restConfig => {
-    const endpointCount = restConfig.endpoints?.length || 0;
-    console.log(`    Config "${restConfig.name}": ${endpointCount} endpoint(s), basePath: ${restConfig.basePath || '(none)'}`);
-    return restConfig.endpoints || [];
-  });
+  const allEndpoints = [
+    ...crudEndpoints,
+    ...normalizedApis.rest.flatMap(restConfig => {
+      const endpointCount = restConfig.endpoints?.length || 0;
+      console.log(`    Config "${restConfig.name}": ${endpointCount} endpoint(s), basePath: ${restConfig.basePath || '(none)'}`);
+      return restConfig.endpoints || [];
+    })
+  ];
+  
+  // Generate input schemas for create/update operations that don't have explicit bodies
+  // but have response schemas that reference entities
+  const operationInputSchemas: YamaSchemas = {};
+  for (const endpoint of allEndpoints) {
+    if ((endpoint.method === 'POST' || endpoint.method === 'PUT' || endpoint.method === 'PATCH') && !endpoint.body) {
+      // Check if response references a schema
+      const responseType = typeof endpoint.response === 'string' ? endpoint.response : endpoint.response?.type;
+      if (responseType && allSchemas[responseType]) {
+        // Extract base schema name (remove array syntax)
+        const baseSchemaName = responseType.replace(/\[\]$/, '');
+        if (allSchemas[baseSchemaName]) {
+          // Generate input schema name
+          const inputSchemaName = endpoint.method === 'POST' 
+            ? generateInputSchemaName(baseSchemaName, 'Create')
+            : generateInputSchemaName(baseSchemaName, 'Update');
+          
+          // Only generate if it doesn't already exist
+          if (!allSchemas[inputSchemaName] && !operationInputSchemas[inputSchemaName]) {
+            // Get the entity/schema definition - check both schemas and entities
+            let schemaDef = allSchemas[baseSchemaName];
+            let entityDef: any = undefined;
+            
+            // If not in schemas, check entities
+            if (!schemaDef && config.entities && config.entities[baseSchemaName]) {
+              entityDef = config.entities[baseSchemaName];
+              // Convert entity to schema to get proper API fields (relations -> foreign keys)
+              schemaDef = entityToSchema(baseSchemaName, entityDef);
+            }
+            
+            if (schemaDef && typeof schemaDef === 'object' && 'fields' in schemaDef) {
+              // Generate input schema similar to CRUD
+              const inputFields: Record<string, any> = {};
+              for (const [fieldName, field] of Object.entries(schemaDef.fields)) {
+                // For create: exclude primary key and generated fields
+                if (endpoint.method === 'POST') {
+                  const fieldDef = field as any;
+                  if (fieldDef.primary || fieldDef.generated) {
+                    continue;
+                  }
+                  if (fieldDef.api === false) {
+                    continue;
+                  }
+                  // Skip relation objects (they should be foreign keys already from entityToSchema)
+                  if (fieldDef.$ref) {
+                    continue; // Skip schema references (relations)
+                  }
+                  inputFields[fieldName] = { ...field };
+                } else {
+                  // For update: all fields optional except primary key
+                  const fieldDef = field as any;
+                  if (fieldDef.primary) {
+                    continue;
+                  }
+                  if (fieldDef.api === false) {
+                    continue;
+                  }
+                  // Skip relation objects
+                  if (fieldDef.$ref) {
+                    continue; // Skip schema references (relations)
+                  }
+                  inputFields[fieldName] = { ...field, required: false };
+                }
+              }
+              
+              operationInputSchemas[inputSchemaName] = { fields: inputFields };
+              console.log(`  Generated operation input schema: ${inputSchemaName} for ${endpoint.method} ${endpoint.path}`);
+              
+              // Update endpoint to reference the input schema
+              (endpoint as any).body = { type: inputSchemaName };
+            }
+          } else if (allSchemas[inputSchemaName] || operationInputSchemas[inputSchemaName]) {
+            // Schema already exists, just reference it
+            (endpoint as any).body = { type: inputSchemaName };
+            console.log(`  Using existing input schema: ${inputSchemaName} for ${endpoint.method} ${endpoint.path}`);
+          }
+        }
+      }
+    }
+  }
+  
+  // Merge operation input schemas into allSchemas
+  if (Object.keys(operationInputSchemas).length > 0) {
+    Object.assign(allSchemas, operationInputSchemas);
+    console.log(`  Added ${Object.keys(operationInputSchemas).length} operation input schema(s) to schemas collection`);
+  }
   
   if (allEndpoints.length === 0) {
     console.warn("Warning: No endpoints found in API configuration. OpenAPI spec will have no paths.");
@@ -484,6 +646,11 @@ export function generateOpenAPI(config: YamaConfig): OpenAPISpec {
     }
     
     try {
+      // Debug: log body for POST/PUT/PATCH endpoints
+      if (['POST', 'PUT', 'PATCH'].includes(endpoint.method) && endpoint.body) {
+        console.log(`  Processing endpoint ${endpoint.method} ${endpoint.path}: body = ${JSON.stringify(endpoint.body)}`);
+      }
+      
       // Convert path parameters to OpenAPI format (e.g., :id -> {id} or {id} -> {id})
       const openAPIPath = endpoint.path.replace(/:(\w+)/g, "{$1}");
 
@@ -492,6 +659,19 @@ export function generateOpenAPI(config: YamaConfig): OpenAPISpec {
       }
 
       const method = endpoint.method.toLowerCase();
+      
+      // Check if this endpoint already exists (might be duplicate from CRUD + explicit definition)
+      if (spec.paths[openAPIPath][method]) {
+        console.warn(`⚠️  Warning: Endpoint "${endpoint.method} ${endpoint.path}" already exists. ${endpoint.body ? 'Keeping existing (has body)' : 'Overwriting with new definition'}`);
+        // If the existing one doesn't have a body but this one does, prefer the one with body
+        if (!spec.paths[openAPIPath][method].requestBody && endpoint.body) {
+          console.log(`  Replacing endpoint with one that has body`);
+        } else if (spec.paths[openAPIPath][method].requestBody && !endpoint.body) {
+          console.log(`  Keeping existing endpoint (it has body, new one doesn't)`);
+          continue; // Skip this endpoint, keep the existing one with body
+        }
+      }
+      
       const operation = endpointToOpenAPIOperation(endpoint as EndpointDefinition, allSchemas, config.auth);
       
       // Validate operation has required fields
@@ -503,7 +683,11 @@ export function generateOpenAPI(config: YamaConfig): OpenAPISpec {
       }
       
       spec.paths[openAPIPath][method] = operation;
-      console.log(`  ✓ Added ${method.toUpperCase()} ${openAPIPath} (operationId: ${operation.operationId || 'none'})`);
+      const hasRequestBody = !!operation.requestBody;
+      const bodyInfo = hasRequestBody 
+        ? `with requestBody (${JSON.stringify((operation.requestBody as any)?.content?.['application/json']?.schema || {})})` 
+        : 'WITHOUT requestBody';
+      console.log(`  ✓ Added ${method.toUpperCase()} ${openAPIPath} (operationId: ${operation.operationId || 'none'}) ${bodyInfo}`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error && error.stack ? `\n  Stack: ${error.stack}` : '';
