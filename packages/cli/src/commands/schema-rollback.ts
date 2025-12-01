@@ -6,7 +6,7 @@ import { success, error, info, warning, printBox, printTable, formatDuration, cr
 import { confirm } from "../utils/interactive.ts";
 import type { DatabaseConfig } from "@betagors/yama-core";
 import { deserializeMigration, type MigrationStepUnion, resolveEnvVars, loadEnvFile } from "@betagors/yama-core";
-import { getDatabasePlugin } from "../utils/db-plugin.ts";
+import { getDatabasePluginAndConfig } from "../utils/db-plugin.ts";
 
 interface SchemaRollbackOptions {
   steps?: number | string;
@@ -127,8 +127,11 @@ export async function schemaRollbackCommand(options: SchemaRollbackOptions): Pro
   try {
     const environment = options.env || process.env.NODE_ENV || "development";
     loadEnvFile(configPath, environment);
-    let config = readYamaConfig(configPath) as { database?: DatabaseConfig };
-    config = resolveEnvVars(config) as { database?: DatabaseConfig };
+    let config = readYamaConfig(configPath) as {
+      plugins?: Record<string, Record<string, unknown>> | string[];
+      database?: DatabaseConfig;
+    };
+    config = resolveEnvVars(config) as typeof config;
     const configDir = getConfigDir(configPath);
 
     // Safety check: production environment warning
@@ -162,11 +165,6 @@ export async function schemaRollbackCommand(options: SchemaRollbackOptions): Pro
       process.exit(1);
     }
 
-    if (!config.database) {
-      error("No database configuration found in yama.yaml");
-      process.exit(1);
-    }
-
     const migrationsDir = join(configDir, "migrations");
 
     if (!existsSync(migrationsDir)) {
@@ -174,9 +172,9 @@ export async function schemaRollbackCommand(options: SchemaRollbackOptions): Pro
       return;
     }
 
-    // Initialize database
-    const dbPlugin = await getDatabasePlugin();
-    await dbPlugin.client.initDatabase(config.database);
+    // Get database plugin and config (builds from plugin config if needed)
+    const { plugin: dbPlugin, dbConfig } = await getDatabasePluginAndConfig(config, configPath);
+    await dbPlugin.client.initDatabase(dbConfig);
     const sql = dbPlugin.client.getSQL();
 
     // Create migration tables if they don't exist

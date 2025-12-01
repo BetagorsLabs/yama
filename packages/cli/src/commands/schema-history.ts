@@ -3,7 +3,7 @@ import { findYamaConfig } from "../utils/project-detection.ts";
 import { readYamaConfig, getConfigDir } from "../utils/file-utils.ts";
 import { loadEnvFile, resolveEnvVars } from "@betagors/yama-core";
 import type { DatabaseConfig } from "@betagors/yama-core";
-import { getDatabasePlugin } from "../utils/db-plugin.ts";
+import { getDatabasePluginAndConfig } from "../utils/db-plugin.ts";
 import { success, error, info, printTable, colors } from "../utils/cli-utils.ts";
 
 interface SchemaHistoryOptions {
@@ -23,16 +23,15 @@ export async function schemaHistoryCommand(options: SchemaHistoryOptions): Promi
   try {
     const environment = options.env || process.env.NODE_ENV || "development";
     loadEnvFile(configPath, environment);
-    let config = readYamaConfig(configPath) as { database?: DatabaseConfig };
-    config = resolveEnvVars(config) as { database?: DatabaseConfig };
+    let config = readYamaConfig(configPath) as {
+      plugins?: Record<string, Record<string, unknown>> | string[];
+      database?: DatabaseConfig;
+    };
+    config = resolveEnvVars(config) as typeof config;
 
-    if (!config.database) {
-      error("No database configuration found in yama.yaml");
-      process.exit(1);
-    }
-
-    const dbPlugin = await getDatabasePlugin();
-    dbPlugin.client.initDatabase(config.database);
+    // Get database plugin and config (builds from plugin config if needed)
+    const { plugin: dbPlugin, dbConfig } = await getDatabasePluginAndConfig(config, configPath);
+    await dbPlugin.client.initDatabase(dbConfig);
     const sql = dbPlugin.client.getSQL();
 
     // Get migration history

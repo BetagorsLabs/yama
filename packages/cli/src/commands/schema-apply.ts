@@ -24,7 +24,7 @@ import {
 import { printError } from "../utils/error-handler.ts";
 import { confirmMigration, hasDestructiveOperation } from "../utils/interactive.ts";
 import { TrashManager } from "../utils/trash-manager.ts";
-import { getDatabasePlugin } from "../utils/db-plugin.ts";
+import { getDatabasePluginAndConfig } from "../utils/db-plugin.ts";
 
 interface SchemaApplyOptions {
   config?: string;
@@ -45,14 +45,12 @@ export async function schemaApplyCommand(options: SchemaApplyOptions): Promise<v
   try {
     const environment = options.env || process.env.NODE_ENV || "development";
     loadEnvFile(configPath, environment);
-    let config = readYamaConfig(configPath) as { database?: DatabaseConfig };
-    config = resolveEnvVars(config) as { database?: DatabaseConfig };
+    let config = readYamaConfig(configPath) as {
+      plugins?: Record<string, Record<string, unknown>> | string[];
+      database?: DatabaseConfig;
+    };
+    config = resolveEnvVars(config) as typeof config;
     const configDir = getConfigDir(configPath);
-
-    if (!config.database) {
-      error("No database configuration found in yama.yaml");
-      process.exit(1);
-    }
 
     const migrationsDir = join(configDir, "migrations");
 
@@ -76,9 +74,9 @@ export async function schemaApplyCommand(options: SchemaApplyOptions): Promise<v
       return;
     }
 
-    // Initialize database
-    const dbPlugin = await getDatabasePlugin();
-    await dbPlugin.client.initDatabase(config.database);
+    // Get database plugin and config (builds from plugin config if needed)
+    const { plugin: dbPlugin, dbConfig } = await getDatabasePluginAndConfig(config, configPath);
+    await dbPlugin.client.initDatabase(dbConfig);
     const sql = dbPlugin.client.getSQL();
 
     // Create migration tables

@@ -21,7 +21,7 @@ import {
 import { success, error, info, warning, printBox, printHints } from "../utils/cli-utils.ts";
 import { promptMigrationName, confirm, hasDestructiveOperation } from "../utils/interactive.ts";
 import { generateMigrationNameFromBranch } from "../utils/git-utils.ts";
-import { getDatabasePlugin } from "../utils/db-plugin.ts";
+import { getDatabasePlugin, getDatabasePluginAndConfig } from "../utils/db-plugin.ts";
 
 /**
  * Normalize entities to ensure table names are set
@@ -319,6 +319,7 @@ export async function schemaGenerateCommand(options: SchemaGenerateOptions): Pro
     loadEnvFile(configPath, environment);
     let config = readYamaConfig(configPath) as {
       entities?: YamaEntities;
+      plugins?: Record<string, Record<string, unknown>> | string[];
       database?: DatabaseConfig;
     };
     config = resolveEnvVars(config) as typeof config;
@@ -340,14 +341,14 @@ export async function schemaGenerateCommand(options: SchemaGenerateOptions): Pro
 
     // Get current model hash from database
     let currentHash: string | null = null;
-    if (config.database) {
-      try {
-        const dbPlugin = await getDatabasePlugin();
-        await dbPlugin.client.initDatabase(config.database);
-        const sql = dbPlugin.client.getSQL();
+    try {
+      // Try to get database plugin and config (builds from plugin config if needed)
+      const { plugin: dbPlugin, dbConfig } = await getDatabasePluginAndConfig(config, configPath);
+      await dbPlugin.client.initDatabase(dbConfig);
+      const sql = dbPlugin.client.getSQL();
 
-        // Ensure migration tables exist
-        await sql.unsafe(`
+      // Ensure migration tables exist
+      await sql.unsafe(`
           CREATE TABLE IF NOT EXISTS _yama_migrations (
             id SERIAL PRIMARY KEY,
             name VARCHAR(255) NOT NULL UNIQUE,
@@ -376,16 +377,11 @@ export async function schemaGenerateCommand(options: SchemaGenerateOptions): Pro
           currentHash = null;
         }
 
-        dbPlugin.client.closeDatabase();
-      } catch (err) {
-        // Database connection failed - assume empty database
-        info("Database connection failed, assuming empty database for first migration");
-        try {
-          const dbPlugin = await getDatabasePlugin();
-          await dbPlugin.client.closeDatabase();
-        } catch {}
-        currentHash = null;
-      }
+      await dbPlugin.client.closeDatabase();
+    } catch (err) {
+      // Database connection failed - assume empty database for first migration
+      info("Database connection failed, assuming empty database for first migration");
+      currentHash = null;
     }
 
     // If no current hash, start from empty
@@ -487,14 +483,10 @@ export async function schemaGenerateCommand(options: SchemaGenerateOptions): Pro
       // 2. Compute diff between current and target
       // 3. Generate steps from diff
       
-      if (!config.database) {
-        error("Database configuration required for diff-based migration generation");
-        process.exit(1);
-      }
-
       try {
-        const dbPlugin = await getDatabasePlugin();
-        await dbPlugin.client.initDatabase(config.database);
+        // Get database plugin and config (builds from plugin config if needed)
+        const { plugin: dbPlugin, dbConfig } = await getDatabasePluginAndConfig(config, configPath);
+        await dbPlugin.client.initDatabase(dbConfig);
         const sql = dbPlugin.client.getSQL();
 
         // Read current database schema

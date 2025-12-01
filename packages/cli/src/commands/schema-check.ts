@@ -10,7 +10,7 @@ import {
   diffToSteps,
   getCurrentModelHashFromDB,
 } from "@betagors/yama-core";
-import { getDatabasePlugin } from "../utils/db-plugin.ts";
+import { getDatabasePluginAndConfig } from "../utils/db-plugin.ts";
 import { colors, success, error, printBox, printTable } from "../utils/cli-utils.ts";
 import type { YamaEntities } from "@betagors/yama-core";
 
@@ -34,6 +34,7 @@ export async function schemaCheckCommand(options: SchemaCheckOptions): Promise<v
     loadEnvFile(configPath, environment);
     let config = readYamaConfig(configPath) as {
       entities?: YamaEntities;
+      plugins?: Record<string, Record<string, unknown>> | string[];
       database?: DatabaseConfig;
     };
     config = resolveEnvVars(config) as typeof config;
@@ -52,9 +53,10 @@ export async function schemaCheckCommand(options: SchemaCheckOptions): Promise<v
 
     // Get current model hash from database
     let currentHash: string | null = null;
-    if (config.database) {
-      const dbPlugin = await getDatabasePlugin();
-      await dbPlugin.client.initDatabase(config.database);
+    try {
+      // Try to get database plugin and config (builds from plugin config if needed)
+      const { plugin: dbPlugin, dbConfig } = await getDatabasePluginAndConfig(config, configPath);
+      await dbPlugin.client.initDatabase(dbConfig);
       const sql = dbPlugin.client.getSQL();
 
       // Ensure migration tables exist
@@ -88,6 +90,9 @@ export async function schemaCheckCommand(options: SchemaCheckOptions): Promise<v
       }
 
       await dbPlugin.client.closeDatabase();
+    } catch (err) {
+      // No database plugin or config available - skip database check
+      // This is fine for schema-check, it can work without a database
     }
 
     // If no current hash, assume empty database
