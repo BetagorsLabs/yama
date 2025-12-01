@@ -1,4 +1,4 @@
-import { getPluginByCategory, loadPlugin } from "@betagors/yama-core";
+import { getPluginByCategory, loadPlugin, getPluginAPI } from "@betagors/yama-core";
 import { getConfigDir } from "./file-utils.ts";
 
 /**
@@ -28,13 +28,14 @@ export async function getDatabasePlugin(
         
         // Check if it's a database plugin by category
         if (plugin.category === "database") {
-          const pluginConfig = typeof configPlugins === "object" && !Array.isArray(configPlugins)
-            ? configPlugins[pluginName] || {}
-            : {};
-          
-          // Initialize plugin and get API
-          const api = await plugin.init(pluginConfig);
-          return api;
+          // Plugin is already initialized by loadPlugin, get API from registry
+          const api = getPluginAPI(pluginName);
+          if (api) {
+            return api;
+          }
+          // If API not found, plugin might not be fully initialized yet
+          // This shouldn't happen, but handle gracefully
+          throw new Error(`Plugin ${pluginName} was loaded but API is not available`);
         } else {
           errors.push(`Plugin ${pluginName} is not a database plugin (category: ${plugin.category || 'unknown'})`);
         }
@@ -78,8 +79,11 @@ export async function getDatabasePlugin(
     );
   }
   
-  // Initialize plugin and get API
-  const api = await dbPlugin.init({});
+  // Plugin is already initialized by loadPlugin, get API from registry
+  const api = getPluginAPI(dbPlugin.name);
+  if (!api) {
+    throw new Error(`Plugin ${dbPlugin.name} was loaded but API is not available`);
+  }
   
   return api;
 }
