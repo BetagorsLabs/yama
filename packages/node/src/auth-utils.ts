@@ -5,7 +5,7 @@
  * for endpoints based on configuration.
  */
 
-import type { EndpointDefinition, YamaConfig } from "./types";
+import type { EndpointDefinition, YamaConfig } from "./types.js";
 
 /**
  * Determine if an endpoint requires authentication

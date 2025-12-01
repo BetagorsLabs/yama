@@ -44,13 +44,13 @@ import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 
 // ===== Module imports =====
-import type { YamaConfig, YamaServer, EndpointDefinition } from "./types";
-import { loadRepositories } from "./repository-loader";
-import { registerRoutes } from "./route-registration";
+import type { YamaConfig, YamaServer, EndpointDefinition } from "./types.js";
+import { loadRepositories } from "./repository-loader.js";
+import { registerRoutes } from "./route-registration.js";
 
 // ===== Re-exports for convenience =====
 export type { YamaConfig, YamaServer, EndpointDefinition };
-export * from "./types";
+export * from "./types.js";
 
 /**
  * Dynamic import for OpenAPI package to handle workspace resolution

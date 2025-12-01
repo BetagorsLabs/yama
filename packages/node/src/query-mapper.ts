@@ -7,7 +7,7 @@
 
 import type { EntityDefinition, CrudConfig, HandlerContext } from "@betagors/yama-core";
 import { parseFieldDefinition, detectPaginationFromQuery } from "@betagors/yama-core";
-import { getApiFieldNameFromEntity } from "./entity-utils";
+import { getApiFieldNameFromEntity } from "./entity-utils.js";
 
 /**
  * Map query parameters to repository findAll options

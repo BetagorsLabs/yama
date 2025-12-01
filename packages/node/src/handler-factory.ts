@@ -19,10 +19,10 @@ import {
   wrapPaginatedResponse,
   detectPaginationFromQuery,
 } from "@betagors/yama-core";
-import type { EndpointDefinition, QueryHandlerConfig, YamaConfig } from "./types";
-import { isQueryHandler } from "./types";
-import { extractEntityNameFromResponseType, getPrimaryKeyFieldName, getApiFieldNameFromEntity } from "./entity-utils";
-import { mapQueryToFindAllOptions, resolveParameter } from "./query-mapper";
+import type { EndpointDefinition, QueryHandlerConfig, YamaConfig } from "./types.js";
+import { isQueryHandler } from "./types.js";
+import { extractEntityNameFromResponseType, getPrimaryKeyFieldName, getApiFieldNameFromEntity } from "./entity-utils.js";
+import { mapQueryToFindAllOptions, resolveParameter } from "./query-mapper.js";
 
 /**
  * Create a query handler from endpoint configuration

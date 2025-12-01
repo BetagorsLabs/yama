@@ -43,14 +43,14 @@ import {
   createRateLimiterFromConfig,
   formatRateLimitHeaders,
 } from "@betagors/yama-core";
-import type { EndpointDefinition, YamaConfig } from "./types";
-import { isQueryHandler } from "./types";
-import { loadHandlerByPath } from "./handler-loader";
-import { createHandlerContext } from "./handler-context";
-import { executeMiddlewarePhase } from "./middleware-executor";
-import { buildQuerySchema, coerceParams } from "./validation";
-import { needsAuthentication } from "./auth-utils";
-import { createQueryHandler, createDefaultHandler, getResponseType } from "./handler-factory";
+import type { EndpointDefinition, YamaConfig } from "./types.js";
+import { isQueryHandler } from "./types.js";
+import { loadHandlerByPath } from "./handler-loader.js";
+import { createHandlerContext } from "./handler-context.js";
+import { executeMiddlewarePhase } from "./middleware-executor.js";
+import { buildQuerySchema, coerceParams } from "./validation.js";
+import { needsAuthentication } from "./auth-utils.js";
+import { createQueryHandler, createDefaultHandler, getResponseType } from "./handler-factory.js";
 
 /**
  * Register routes from YAMA configuration
