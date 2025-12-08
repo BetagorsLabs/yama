@@ -21,7 +21,8 @@
       "@betagors/yama-ci": ["packages/ci/src"],
       "@betagors/yama-cli": ["packages/cli/src"],
       "@betagors/yama-postgres": ["packages/postgres/src"],
-      "@betagors/yama-fastify": ["packages/fastify/src"]
+      "@betagors/yama-fastify": ["packages/fastify/src"],
+      "@betagors/yama-errors": ["packages/errors/src"]
     }
   }
 }

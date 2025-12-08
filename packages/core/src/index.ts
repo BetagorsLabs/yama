@@ -79,7 +79,58 @@ export {
   type AuthProviderHandler,
   type AuthResult,
   type OAuthProviderMetadata,
+  // New v1 auth types
+  type AuthUser,
+  type SessionInfo,
+  type MfaInfo,
+  type OAuthInfo,
+  type TokenPair,
+  type TokenGenerationOptions,
+  type PasswordStrengthResult,
 } from "./auth/types.js";
+
+// Export auth plugin types
+export {
+  type AuthPlugin,
+  type AuthPluginType,
+  type AuthPluginConfig,
+  type AuthPluginLogger,
+  type AuthEndpoint,
+  type AuthEndpointHandler,
+  type AuthEndpointContext,
+  type AuthEndpointResponse,
+  type AuthEndpointsConfig,
+  type AuthUserEntityConfig,
+  type AuthPluginRegistrationOptions,
+  type RegisteredAuthPlugin,
+} from "./auth/plugin-types.js";
+
+// Export auth utilities
+export {
+  hashPassword,
+  verifyPassword,
+  checkPasswordStrength,
+  generateSecureToken,
+  generateOTP,
+  secureCompare,
+  type PasswordStrengthOptions,
+} from "./auth/utils.js";
+
+// Export auth context helpers
+export {
+  enhanceAuthContext,
+  createPermissionChecker,
+  matchesPermission,
+  getRolePermissions,
+  extractRolePermissions,
+} from "./auth/context-helpers.js";
+
+// Export auth endpoints builder
+export {
+  buildAuthEndpoints,
+  getDefaultAuthEndpointsConfig,
+  type AuthEndpointBuilderOptions,
+} from "./auth/endpoints.js";
 
 // Export database registry
 export {
@@ -365,6 +416,36 @@ export {
   getPredecessorSnapshots,
 } from "./migrations/graph.js";
 
+// Export schema versioning
+export {
+  type SchemaVersion,
+  type SchemaVersionHistory,
+  type VersionDiff,
+  computeSchemaHash,
+  loadVersionHistory,
+  saveVersionHistory,
+  getCurrentSchemaVersion,
+  getCurrentSchemaHash,
+  recordSchemaVersion,
+  hasSchemaChanged,
+  getSchemaVersion,
+  listSchemaVersions,
+  loadEntitySnapshot,
+  getVersionDiff,
+  detectChangedEntities,
+} from "./migrations/versioning.js";
+
+// Export migration generator
+export {
+  type MigrationGeneratorOptions,
+  type GeneratedMigration,
+  type MigrationSafetyInfo,
+  type MigrationSummary,
+  generateMigration,
+  formatMigration,
+  hasEntityChanges,
+} from "./migrations/generator.js";
+
 // Export state management
 export {
   type EnvironmentState,
@@ -454,12 +535,17 @@ export {
   SafetyLevel,
   type SafetyAssessment,
   type ImpactAnalysis,
+  type Environment,
+  type EnvironmentSafetyAssessment,
   classifyStep,
   assessTransition,
+  assessSafety,
   analyzeImpact,
   isSafeForAutoDeploy,
   requiresApproval,
   getSafetySummary,
+  validateForEnvironment,
+  getPreMigrationChecks,
 } from "./migrations/safety.js";
 
 // Export trash/recycle bin types

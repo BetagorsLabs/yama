@@ -12,4 +12,6 @@ pnpm dev
 ## Quick Links
 
 - [Roadmap](./ROADMAP.md) - Planned features and enhancements
+- [Naming Conventions](./NAMING_CONVENTIONS.md) - Package naming guidelines
+- [Auth Strategy](./AUTH_STRATEGY.md) - Authentication & authorization architecture
 

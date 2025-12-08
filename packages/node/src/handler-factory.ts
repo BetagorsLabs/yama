@@ -19,6 +19,12 @@ import {
   wrapPaginatedResponse,
   detectPaginationFromQuery,
 } from "@betagors/yama-core";
+import {
+  NotFoundError,
+  ValidationError,
+  ConfigurationError,
+  ErrorCodes,
+} from "@betagors/yama-errors";
 import type { EndpointDefinition, QueryHandlerConfig, YamaConfig } from "./types.js";
 import { isQueryHandler } from "./types.js";
 import { extractEntityNameFromResponseType, getPrimaryKeyFieldName, getApiFieldNameFromEntity } from "./entity-utils.js";
@@ -68,7 +74,10 @@ export function createQueryHandler(
   return async (context: HandlerContext) => {
     // Handler config must be an object with type: "query"
     if (!isQueryHandler(endpoint.handler)) {
-      throw new Error("Invalid query handler configuration");
+      throw new ConfigurationError("Invalid query handler configuration", {
+        code: ErrorCodes.CONFIG_INVALID,
+        context: { endpoint: endpoint.path },
+      });
     }
 
     const handlerConfig = endpoint.handler as QueryHandlerConfig;
@@ -76,12 +85,26 @@ export function createQueryHandler(
 
     // Check if entity exists
     if (!entities || !entities[entityName]) {
-      throw new Error(`Entity "${entityName}" not found in configuration`);
+      throw new ConfigurationError(`Entity "${entityName}" not found in configuration`, {
+        code: ErrorCodes.CONFIG_SCHEMA,
+        context: { entityName },
+        suggestions: [
+          `Add entity "${entityName}" to your yama.yaml schemas section`,
+          `Check for typos in the entity name`,
+        ],
+      });
     }
 
     // Check if repository is available
     if (!context.entities || !context.entities[entityName]) {
-      throw new Error(`Repository for entity "${entityName}" not available in handler context`);
+      throw new ConfigurationError(`Repository for entity "${entityName}" not available`, {
+        code: ErrorCodes.CONFIG_MISSING,
+        context: { entityName },
+        suggestions: [
+          `Run 'yama generate' to generate repository files`,
+          `Ensure a database plugin is configured`,
+        ],
+      });
     }
 
     const repository = context.entities[entityName] as any;
@@ -342,13 +365,18 @@ export function createDefaultHandler(
             const id = context.params[primaryKey] || context.params.id;
             
             if (!id) {
-              throw new Error(`Missing required parameter: ${primaryKey}`);
+              throw new ValidationError(`Missing required parameter: ${primaryKey}`, {
+                code: ErrorCodes.VALIDATION_PARAMS,
+                details: [{ field: primaryKey, message: 'Required parameter is missing' }],
+              });
             }
 
             const result = await repository.findById(String(id));
             if (!result) {
-              context.status(404);
-              return { error: "Not found" };
+              throw new NotFoundError(`${entityName} not found`, {
+                code: ErrorCodes.NOT_FOUND_ENTITY,
+                context: { entityType: entityName, id: String(id) },
+              });
             }
             return result;
           }
@@ -357,7 +385,10 @@ export function createDefaultHandler(
           // Create entity
           if (method === "POST") {
             if (!context.body) {
-              throw new Error("Request body is required");
+              throw new ValidationError("Request body is required", {
+                code: ErrorCodes.VALIDATION_BODY,
+                details: [{ message: 'Request body cannot be empty' }],
+              });
             }
             console.log(`📤 Creating ${entityName} with body:`, JSON.stringify(context.body, null, 2));
             const result = await repository.create(context.body);
@@ -376,16 +407,24 @@ export function createDefaultHandler(
             const id = context.params[primaryKey] || context.params.id;
             
             if (!id) {
-              throw new Error(`Missing required parameter: ${primaryKey}`);
+              throw new ValidationError(`Missing required parameter: ${primaryKey}`, {
+                code: ErrorCodes.VALIDATION_PARAMS,
+                details: [{ field: primaryKey, message: 'Required parameter is missing' }],
+              });
             }
             if (!context.body) {
-              throw new Error("Request body is required");
+              throw new ValidationError("Request body is required", {
+                code: ErrorCodes.VALIDATION_BODY,
+                details: [{ message: 'Request body cannot be empty' }],
+              });
             }
 
             const result = await repository.update(String(id), context.body);
             if (!result) {
-              context.status(404);
-              return { error: "Not found" };
+              throw new NotFoundError(`${entityName} not found`, {
+                code: ErrorCodes.NOT_FOUND_ENTITY,
+                context: { entityType: entityName, id: String(id) },
+              });
             }
             return result;
           }
@@ -397,16 +436,24 @@ export function createDefaultHandler(
             const id = context.params[primaryKey] || context.params.id;
             
             if (!id) {
-              throw new Error(`Missing required parameter: ${primaryKey}`);
+              throw new ValidationError(`Missing required parameter: ${primaryKey}`, {
+                code: ErrorCodes.VALIDATION_PARAMS,
+                details: [{ field: primaryKey, message: 'Required parameter is missing' }],
+              });
             }
             if (!context.body) {
-              throw new Error("Request body is required");
+              throw new ValidationError("Request body is required", {
+                code: ErrorCodes.VALIDATION_BODY,
+                details: [{ message: 'Request body cannot be empty' }],
+              });
             }
 
             const result = await repository.update(String(id), context.body);
             if (!result) {
-              context.status(404);
-              return { error: "Not found" };
+              throw new NotFoundError(`${entityName} not found`, {
+                code: ErrorCodes.NOT_FOUND_ENTITY,
+                context: { entityType: entityName, id: String(id) },
+              });
             }
             return result;
           }
@@ -417,13 +464,18 @@ export function createDefaultHandler(
             const id = context.params[primaryKey] || context.params.id;
             
             if (!id) {
-              throw new Error(`Missing required parameter: ${primaryKey}`);
+              throw new ValidationError(`Missing required parameter: ${primaryKey}`, {
+                code: ErrorCodes.VALIDATION_PARAMS,
+                details: [{ field: primaryKey, message: 'Required parameter is missing' }],
+              });
             }
 
             const deleted = await repository.delete(String(id));
             if (!deleted) {
-              context.status(404);
-              return { error: "Not found" };
+              throw new NotFoundError(`${entityName} not found`, {
+                code: ErrorCodes.NOT_FOUND_ENTITY,
+                context: { entityType: entityName, id: String(id) },
+              });
             }
             context.status(204);
             return undefined;

@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { join, dirname, extname, resolve } from "path";
 import { pathToFileURL } from "url";
 import type { MiddlewareHandler } from "./types.js";
+import { MiddlewareError, ErrorCodes } from "@betagors/yama-errors";
 
 /**
  * Load middleware handler from a file
@@ -19,8 +20,16 @@ export async function loadMiddlewareFromFile(
   try {
     readFileSync(resolvedPath, "utf-8");
   } catch (error) {
-    throw new Error(
-      `Middleware file not found: ${filePath} (resolved to: ${resolvedPath})`
+    throw new MiddlewareError(
+      `Middleware file not found: ${filePath}`,
+      {
+        code: ErrorCodes.MIDDLEWARE_NOT_FOUND,
+        context: { filePath, resolvedPath },
+        suggestions: [
+          `Check that the middleware file exists at: ${resolvedPath}`,
+          `Verify the path in your yama.yaml configuration`,
+        ],
+      }
     );
   }
 
@@ -69,18 +78,33 @@ export async function loadMiddlewareFromFile(
       return module[camelCaseName] as MiddlewareHandler;
     }
 
-    throw new Error(
-      `Middleware file ${filePath} must export a default function or a named export "middleware" or "${camelCaseName}"`
+    throw new MiddlewareError(
+      `Middleware file ${filePath} does not export a valid handler`,
+      {
+        code: ErrorCodes.MIDDLEWARE_NOT_FOUND,
+        context: { filePath },
+        suggestions: [
+          `Export a default function or a named export "middleware" or "${camelCaseName}"`,
+          `Example: export default async (context, next) => { await next(); }`,
+        ],
+      }
     );
   } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(
-        `Failed to load middleware from ${filePath}: ${error.message}`
-      );
+    // If it's already a MiddlewareError, re-throw
+    if (error instanceof MiddlewareError) {
+      throw error;
     }
-    throw error;
+    throw new MiddlewareError(
+      `Failed to load middleware from ${filePath}`,
+      {
+        code: ErrorCodes.MIDDLEWARE_EXECUTION_FAILED,
+        context: { filePath },
+        cause: error instanceof Error ? error : undefined,
+      }
+    );
   }
 }
+
 
 
 

@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { pathToFileURL } from "url";
 import type { PluginManifest, YamaPlugin } from "./base.js";
+import { PluginError, ErrorCodes } from "@betagors/yama-errors";
 
 /**
  * Load plugin manifest from package.json
@@ -29,13 +30,25 @@ export async function loadPluginFromPackage(
         packagePath = require.resolve(packageName);
       } catch {
         // Re-throw the original error
-        throw new Error(`Cannot find module '${packageName}'`);
+        throw new PluginError(`Cannot find module '${packageName}'`, {
+          code: ErrorCodes.PLUGIN_NOT_FOUND,
+          context: { packageName },
+        });
       }
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Plugin package not found: ${packageName}. Install it with: npm install ${packageName}${errorMsg ? ` (Original error: ${errorMsg})` : ""}`
+    throw new PluginError(
+      `Plugin package not found: ${packageName}`,
+      {
+        code: ErrorCodes.PLUGIN_NOT_FOUND,
+        context: { packageName },
+        cause: error instanceof Error ? error : undefined,
+        suggestions: [
+          `Install it with: npm install ${packageName}`,
+          `Check that the package name is correct`,
+        ],
+      }
     );
   }
 
@@ -54,7 +67,14 @@ export async function loadPluginFromPackage(
   }
 
   if (!packageJsonPath) {
-    throw new Error(`Could not find package.json for plugin: ${packageName}`);
+    throw new PluginError(`Could not find package.json for plugin: ${packageName}`, {
+      code: ErrorCodes.PLUGIN_NOT_FOUND,
+      context: { packageName },
+      suggestions: [
+        `Ensure the package is installed correctly`,
+        `Check that the package has a valid package.json`,
+      ],
+    });
   }
 
   // Read and parse package.json
@@ -63,8 +83,16 @@ export async function loadPluginFromPackage(
   // Extract yama metadata
   const yamaMetadata = packageJson.yama;
   if (!yamaMetadata) {
-    throw new Error(
-      `Plugin ${packageName} does not have "yama" metadata in package.json`
+    throw new PluginError(
+      `Plugin ${packageName} does not have "yama" metadata in package.json`,
+      {
+        code: ErrorCodes.PLUGIN_CONFIG_INVALID,
+        context: { packageName },
+        suggestions: [
+          `Add a "yama" field to the plugin's package.json`,
+          `See YAMA plugin documentation for the required metadata format`,
+        ],
+      }
     );
   }
 
@@ -122,8 +150,17 @@ export async function importPlugin(
       packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
     }
   } catch (error) {
-    throw new Error(
-      `Could not resolve entry point for plugin ${packageName}: ${error instanceof Error ? error.message : String(error)}`
+    throw new PluginError(
+      `Could not resolve entry point for plugin ${packageName}`,
+      {
+        code: ErrorCodes.PLUGIN_INIT_FAILED,
+        context: { packageName, entryPoint: manifest.entryPoint },
+        cause: error instanceof Error ? error : undefined,
+        suggestions: [
+          `Check that the plugin's entryPoint in package.json is correct`,
+          `Ensure the plugin has been built (run npm run build in the plugin directory)`,
+        ],
+      }
     );
   }
 
@@ -139,14 +176,32 @@ export async function importPlugin(
       pluginModule.default || pluginModule[packageName] || pluginModule.plugin;
 
     if (!plugin) {
-      throw new Error(
-        `Plugin ${packageName} does not export a plugin. Expected default export or named export "plugin".`
+      throw new PluginError(
+        `Plugin ${packageName} does not export a plugin`,
+        {
+          code: ErrorCodes.PLUGIN_CONFIG_INVALID,
+          context: { packageName },
+          suggestions: [
+            `The plugin should have a default export or a named export called "plugin"`,
+            `Check the plugin's source code for the correct export`,
+          ],
+        }
       );
     }
 
     // Validate plugin structure
     if (typeof plugin.init !== "function") {
-      throw new Error(`Plugin ${packageName} does not implement init() method`);
+      throw new PluginError(
+        `Plugin ${packageName} does not implement init() method`,
+        {
+          code: ErrorCodes.PLUGIN_CONFIG_INVALID,
+          context: { packageName },
+          suggestions: [
+            `All YAMA plugins must implement an init() method`,
+            `See YAMA plugin documentation for the required interface`,
+          ],
+        }
+      );
     }
 
     // Attach manifest if not present
@@ -177,8 +232,17 @@ export async function importPlugin(
 
     return plugin as YamaPlugin;
   } catch (error) {
-    throw new Error(
-      `Failed to import plugin ${packageName}: ${error instanceof Error ? error.message : String(error)}`
+    // If it's already a PluginError, re-throw
+    if (error instanceof PluginError) {
+      throw error;
+    }
+    throw new PluginError(
+      `Failed to import plugin ${packageName}`,
+      {
+        code: ErrorCodes.PLUGIN_INIT_FAILED,
+        context: { packageName },
+        cause: error instanceof Error ? error : undefined,
+      }
     );
   }
 }

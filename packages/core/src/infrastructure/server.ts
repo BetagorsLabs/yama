@@ -40,6 +40,9 @@ export interface HandlerContext {
   body: unknown;
   headers: Record<string, string | undefined>;
   
+  // Request identification (for tracing/logging)
+  requestId?: string;
+  
   // Authentication context
   auth?: AuthContext;
   

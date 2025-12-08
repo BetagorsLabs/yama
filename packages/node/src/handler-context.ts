@@ -12,6 +12,7 @@ import type {
   HandlerContext,
   StorageBucket,
 } from "@betagors/yama-core";
+import { enhanceAuthContext } from "@betagors/yama-core";
 
 /**
  * Create a handler context from request and reply
@@ -73,9 +74,16 @@ export function createHandlerContext(
   realtimeAdapter?: unknown,
   emailService?: any,
   loggerService?: any,
-  metricsService?: any
+  metricsService?: any,
+  requestId?: string,
+  rolePermissions?: Record<string, string[]>
 ): HandlerContext {
   let statusCode: number | undefined;
+  
+  // Enhance auth context with permission helpers (can, hasRole, canAny, canAll)
+  const enhancedAuth = authContext 
+    ? enhanceAuthContext(authContext, rolePermissions || {})
+    : undefined;
   
   // Create a proxy for entities that provides better error messages
   // This helps developers understand when repositories haven't been generated
@@ -119,8 +127,11 @@ export function createHandlerContext(
     body: request.body,
     headers: request.headers,
     
-    // ===== Auth context =====
-    auth: authContext,
+    // ===== Request identification =====
+    requestId: requestId,
+    
+    // ===== Auth context (enhanced with can(), hasRole(), etc.) =====
+    auth: enhancedAuth,
     
     // ===== Database access =====
     db: dbAdapter,
@@ -180,18 +191,19 @@ export function createHandlerContext(
     } : undefined,
     
     // ===== Logger access (from logging plugin) =====
+    // Logger automatically includes requestId in all log calls for tracing
     logger: loggerService ? {
       info: (message: string, meta?: Record<string, unknown>) => {
-        loggerService.info(message, meta);
+        loggerService.info(message, { ...meta, requestId });
       },
       warn: (message: string, meta?: Record<string, unknown>) => {
-        loggerService.warn(message, meta);
+        loggerService.warn(message, { ...meta, requestId });
       },
       error: (message: string, error?: Error, meta?: Record<string, unknown>) => {
-        loggerService.error(message, error, meta);
+        loggerService.error(message, error, { ...meta, requestId });
       },
       debug: (message: string, meta?: Record<string, unknown>) => {
-        loggerService.debug(message, meta);
+        loggerService.debug(message, { ...meta, requestId });
       },
     } : undefined,
     

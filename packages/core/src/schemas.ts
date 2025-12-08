@@ -923,17 +923,9 @@ export interface EndpointAuth {
   provider?: string; // Provider type or name to use
 }
 
-export interface AuthContext {
-  authenticated: boolean;
-  user?: {
-    id?: string;
-    email?: string;
-    roles?: string[];
-    [key: string]: unknown;
-  };
-  provider?: string;
-  token?: string;
-}
+// AuthContext is now defined in auth/types.ts with full plugin extension support
+// Re-export for backward compatibility
+export type { AuthContext, AuthUser } from "./auth/types.js";
 
 // Rate limiting types
 export type RateLimitKeyStrategy = "ip" | "user" | "both";

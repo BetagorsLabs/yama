@@ -2,13 +2,23 @@ import type { MigrationStepUnion } from "./diff.js";
 import type { Transition } from "./transitions.js";
 
 /**
- * Safety level classification
+ * Safety level classification (numeric for comparison, higher = more dangerous)
  */
 export enum SafetyLevel {
-  SAFE = "safe",
-  REVIEW = "review",
-  DANGEROUS = "dangerous",
+  /** Safe - can be auto-deployed */
+  Safe = 0,
+  /** Requires review but likely safe */
+  RequiresReview = 1,
+  /** Unsafe - may cause issues */
+  Unsafe = 2,
+  /** Dangerous - will cause data loss */
+  Dangerous = 3,
 }
+
+/**
+ * Environment type for safety checks
+ */
+export type Environment = "development" | "staging" | "production";
 
 /**
  * Safety assessment for a migration step or transition
@@ -37,7 +47,7 @@ export interface ImpactAnalysis {
  */
 export function classifyStep(step: MigrationStepUnion): SafetyAssessment {
   const reasons: string[] = [];
-  let level: SafetyLevel = SafetyLevel.SAFE;
+  let level: SafetyLevel = SafetyLevel.Safe;
   
   switch (step.type) {
     case "add_table":
@@ -50,7 +60,7 @@ export function classifyStep(step: MigrationStepUnion): SafetyAssessment {
       if (step.column.nullable) {
         reasons.push("Adding nullable column is non-breaking");
       } else {
-        level = SafetyLevel.REVIEW;
+        level = SafetyLevel.RequiresReview;
         reasons.push("Adding non-nullable column requires default value or data migration");
       }
       break;
@@ -62,14 +72,20 @@ export function classifyStep(step: MigrationStepUnion): SafetyAssessment {
       
     case "add_foreign_key":
       // Adding foreign keys requires review (data validation needed)
-      level = SafetyLevel.REVIEW;
+      level = SafetyLevel.RequiresReview;
       reasons.push("Adding foreign key requires data validation");
       break;
       
     case "modify_column":
       // Modifying columns requires review
-      level = SafetyLevel.REVIEW;
+      level = SafetyLevel.RequiresReview;
       reasons.push("Modifying column type/size may require data transformation");
+      break;
+      
+    case "rename_column":
+      // Renaming requires review - code may reference old name
+      level = SafetyLevel.RequiresReview;
+      reasons.push("Renaming column may break code referencing old name");
       break;
       
     case "drop_index":
@@ -84,13 +100,13 @@ export function classifyStep(step: MigrationStepUnion): SafetyAssessment {
       
     case "drop_column":
       // Dropping columns is dangerous
-      level = SafetyLevel.DANGEROUS;
+      level = SafetyLevel.Dangerous;
       reasons.push("Dropping column will delete data (use shadow column instead)");
       break;
       
     case "drop_table":
       // Dropping tables is dangerous
-      level = SafetyLevel.DANGEROUS;
+      level = SafetyLevel.Dangerous;
       reasons.push("Dropping table will delete all data");
       break;
   }
@@ -98,8 +114,8 @@ export function classifyStep(step: MigrationStepUnion): SafetyAssessment {
   return {
     level,
     reasons,
-    canAutoDeploy: level === SafetyLevel.SAFE,
-    requiresApproval: level !== SafetyLevel.SAFE,
+    canAutoDeploy: level === SafetyLevel.Safe,
+    requiresApproval: level !== SafetyLevel.Safe,
   };
 }
 
@@ -110,24 +126,101 @@ export function assessTransition(transition: Transition): SafetyAssessment {
   const stepAssessments = transition.steps.map(classifyStep);
   
   // Overall level is the highest (most dangerous) level
-  let overallLevel = SafetyLevel.SAFE;
+  let overallLevel = SafetyLevel.Safe;
   const reasons: string[] = [];
   
   for (const assessment of stepAssessments) {
-    if (assessment.level === SafetyLevel.DANGEROUS) {
-      overallLevel = SafetyLevel.DANGEROUS;
-    } else if (assessment.level === SafetyLevel.REVIEW && overallLevel === SafetyLevel.SAFE) {
-      overallLevel = SafetyLevel.REVIEW;
+    if (assessment.level > overallLevel) {
+      overallLevel = assessment.level;
     }
-    
     reasons.push(...assessment.reasons);
   }
   
   return {
     level: overallLevel,
     reasons: [...new Set(reasons)], // Remove duplicates
-    canAutoDeploy: overallLevel === SafetyLevel.SAFE,
-    requiresApproval: overallLevel !== SafetyLevel.SAFE,
+    canAutoDeploy: overallLevel === SafetyLevel.Safe,
+    requiresApproval: overallLevel !== SafetyLevel.Safe,
+  };
+}
+
+/**
+ * Extended safety assessment with environment context
+ */
+export interface EnvironmentSafetyAssessment extends SafetyAssessment {
+  environment: Environment;
+  blockedInProduction: boolean;
+  warnings: string[];
+  recommendations: string[];
+}
+
+/**
+ * Assess safety for a specific environment
+ */
+export function assessSafety(
+  steps: MigrationStepUnion[],
+  environment: Environment = "development"
+): EnvironmentSafetyAssessment {
+  const stepAssessments = steps.map(classifyStep);
+  
+  let overallLevel = SafetyLevel.Safe;
+  const reasons: string[] = [];
+  const warnings: string[] = [];
+  const recommendations: string[] = [];
+  
+  for (const assessment of stepAssessments) {
+    if (assessment.level > overallLevel) {
+      overallLevel = assessment.level;
+    }
+    reasons.push(...assessment.reasons);
+  }
+  
+  // Environment-specific checks
+  let blockedInProduction = false;
+  
+  if (environment === "production") {
+    // Block dangerous operations in production by default
+    if (overallLevel >= SafetyLevel.Dangerous) {
+      blockedInProduction = true;
+      warnings.push("Destructive operations are blocked in production by default");
+      recommendations.push("Use --allow-destructive flag to override (not recommended)");
+      recommendations.push("Consider using shadow columns for zero-downtime migrations");
+    }
+    
+    // Add production-specific warnings
+    if (overallLevel >= SafetyLevel.RequiresReview) {
+      warnings.push("This migration should be tested in staging before production");
+      recommendations.push("Create a backup before running this migration");
+    }
+    
+    // Check for large schema changes
+    if (steps.length > 10) {
+      warnings.push("Large migration with many steps - consider splitting");
+      recommendations.push("Run during low-traffic period");
+    }
+  }
+  
+  // Add general recommendations based on step types
+  const hasDrops = steps.some(s => s.type === "drop_table" || s.type === "drop_column");
+  if (hasDrops) {
+    recommendations.push("Verify data backup before proceeding");
+    recommendations.push("Consider keeping dropped data in a separate table first");
+  }
+  
+  const hasTypeChanges = steps.some(s => s.type === "modify_column");
+  if (hasTypeChanges) {
+    recommendations.push("Test data conversion with a sample of production data");
+  }
+  
+  return {
+    level: overallLevel,
+    reasons: [...new Set(reasons)],
+    canAutoDeploy: overallLevel === SafetyLevel.Safe && environment !== "production",
+    requiresApproval: overallLevel !== SafetyLevel.Safe || environment === "production",
+    environment,
+    blockedInProduction,
+    warnings,
+    recommendations,
   };
 }
 
@@ -213,14 +306,17 @@ export function getSafetySummary(transition: Transition): {
   
   let summary = "";
   switch (assessment.level) {
-    case SafetyLevel.SAFE:
-      summary = "✅ Safe to auto-deploy - All changes are non-breaking";
+    case SafetyLevel.Safe:
+      summary = "Safe to auto-deploy - All changes are non-breaking";
       break;
-    case SafetyLevel.REVIEW:
-      summary = "⚠️ Requires review - Some changes may need attention";
+    case SafetyLevel.RequiresReview:
+      summary = "Requires review - Some changes may need attention";
       break;
-    case SafetyLevel.DANGEROUS:
-      summary = "🚨 Dangerous - Manual approval required";
+    case SafetyLevel.Unsafe:
+      summary = "Unsafe - Manual review strongly recommended";
+      break;
+    case SafetyLevel.Dangerous:
+      summary = "Dangerous - Manual approval required, data loss possible";
       break;
   }
   
@@ -238,6 +334,77 @@ export function getSafetySummary(transition: Transition): {
     details,
   };
 }
+
+/**
+ * Validate migration can run in environment
+ */
+export function validateForEnvironment(
+  steps: MigrationStepUnion[],
+  environment: Environment,
+  options: { allowDestructive?: boolean } = {}
+): { valid: boolean; errors: string[]; warnings: string[] } {
+  const assessment = assessSafety(steps, environment);
+  const errors: string[] = [];
+  const warnings: string[] = [...assessment.warnings];
+  
+  // Block dangerous operations in production unless explicitly allowed
+  if (
+    environment === "production" &&
+    assessment.level >= SafetyLevel.Dangerous &&
+    !options.allowDestructive
+  ) {
+    errors.push("Destructive operations are not allowed in production");
+    errors.push("Use --allow-destructive to override (not recommended)");
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
+/**
+ * Get recommended pre-migration checks
+ */
+export function getPreMigrationChecks(
+  steps: MigrationStepUnion[],
+  environment: Environment
+): string[] {
+  const checks: string[] = [];
+  
+  // Always check database connection
+  checks.push("Verify database connection");
+  
+  // Environment-specific checks
+  if (environment === "production" || environment === "staging") {
+    checks.push("Create database backup");
+    checks.push("Verify backup is accessible and restorable");
+    checks.push("Notify relevant team members");
+  }
+  
+  // Check based on step types
+  const hasDrops = steps.some(s => s.type === "drop_table" || s.type === "drop_column");
+  if (hasDrops) {
+    checks.push("Confirm data in dropped columns/tables is not needed");
+    checks.push("Verify no application code references dropped schema");
+  }
+  
+  const hasTypeChanges = steps.some(s => s.type === "modify_column");
+  if (hasTypeChanges) {
+    checks.push("Verify data can be converted to new column types");
+    checks.push("Test migration on staging with production-like data");
+  }
+  
+  if (environment === "production") {
+    checks.push("Schedule migration during low-traffic period");
+    checks.push("Have rollback plan ready");
+    checks.push("Monitor application after migration");
+  }
+  
+  return checks;
+}
+
 
 
 

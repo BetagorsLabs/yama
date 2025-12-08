@@ -22,6 +22,7 @@
  * - Structured error responses
  */
 
+import { randomUUID } from "crypto";
 import type {
   HttpRequest,
   HttpResponse,
@@ -52,6 +53,16 @@ import { executeMiddlewarePhase } from "./middleware-executor.js";
 import { buildQuerySchema, coerceParams } from "./validation.js";
 import { needsAuthentication } from "./auth-utils.js";
 import { createQueryHandler, createDefaultHandler, getResponseType } from "./handler-factory.js";
+import {
+  handleError,
+  createValidationError,
+  createAuthError,
+  createAuthzError,
+  createRateLimitError,
+  ValidationError,
+  ErrorCodes,
+  formatRestError,
+} from "./error-handler.js";
 
 /**
  * Register routes from YAMA configuration
@@ -196,6 +207,9 @@ export async function registerRoutes(
 
       // ===== Wrap handler with full request lifecycle =====
       const wrappedHandler: RouteHandler = async (request: HttpRequest, reply: HttpResponse) => {
+        // Generate unique request ID for tracing
+        const requestId = randomUUID();
+        
         // Record request start time for duration calculation
         const startTime = Date.now();
       
@@ -206,7 +220,7 @@ export async function registerRoutes(
           // ============================================
           // MONITORING: Request Start
           // ============================================
-          console.log(`🔍 Creating handler context with ${repositories ? Object.keys(repositories).length : 0} repositories:`, repositories ? Object.keys(repositories) : 'none');
+          console.log(`🔍 [${requestId}] Creating handler context with ${repositories ? Object.keys(repositories).length : 0} repositories:`, repositories ? Object.keys(repositories) : 'none');
           handlerContext = createHandlerContext(
             request,
             reply,
@@ -218,9 +232,10 @@ export async function registerRoutes(
             realtimeAdapter,
             emailService,
             loggerService,
-            metricsService
+            metricsService,
+            requestId
           );
-          console.log(`🔍 Handler context created, entities available:`, handlerContext.entities ? Object.keys(handlerContext.entities as any) : 'none');
+          console.log(`🔍 [${requestId}] Handler context created, entities available:`, handlerContext.entities ? Object.keys(handlerContext.entities as any) : 'none');
           
           // Call monitoring hooks if available
           if (monitoringService?.onRequestStart) {
@@ -319,10 +334,12 @@ export async function registerRoutes(
             );
 
             if (!authResult.authorized) {
-              reply.status(401).send({
-                error: "Unauthorized",
-                message: authResult.error || "Authentication or authorization failed",
-              });
+              const authError = createAuthError(
+                authResult.error || "Authentication or authorization failed",
+                ErrorCodes.AUTH_REQUIRED
+              );
+              const response = formatRestError(authError, { requestId, path, method });
+              reply.status(authError.statusCode).send(response);
               return;
             }
 
@@ -392,11 +409,13 @@ export async function registerRoutes(
               }
               
               if (!rateLimitResult.allowed) {
-                reply.status(429).send({
-                  error: "Too Many Requests",
-                  message: `Rate limit exceeded. Try again after ${Math.ceil(rateLimitResult.resetAfter / 1000)} seconds.`,
-                  retryAfter: Math.ceil(rateLimitResult.resetAfter / 1000),
-                });
+                const rateLimitError = createRateLimitError(
+                  Math.ceil(rateLimitResult.resetAfter / 1000),
+                  rateLimitResult.limit,
+                  rateLimitResult.remaining
+                );
+                const response = formatRestError(rateLimitError, { requestId, path, method });
+                reply.status(rateLimitError.statusCode).send(response);
                 return;
               }
             }
@@ -413,11 +432,17 @@ export async function registerRoutes(
             const paramsValidation = validator.validateSchema(paramsSchema, coercedParams);
             
             if (!paramsValidation.valid) {
-              reply.status(400).send({
-                error: "Path parameter validation failed",
-                message: validator.formatErrors(paramsValidation.errors || []),
-                errors: paramsValidation.errors
-              });
+              const validationError = createValidationError(
+                "Path parameter validation failed",
+                (paramsValidation.errors || []).map((e: any) => ({
+                  field: e.instancePath?.replace(/^\//, '') || e.params?.missingProperty,
+                  message: e.message || 'Validation failed',
+                  rule: e.keyword,
+                })),
+                'params'
+              );
+              const response = formatRestError(validationError, { requestId, path, method });
+              reply.status(validationError.statusCode).send(response);
               return;
             }
             
@@ -436,11 +461,17 @@ export async function registerRoutes(
             const queryValidation = validator.validateSchema(querySchema, coercedQuery);
             
             if (!queryValidation.valid) {
-              reply.status(400).send({
-                error: "Query parameter validation failed",
-                message: validator.formatErrors(queryValidation.errors || []),
-                errors: queryValidation.errors
-              });
+              const validationError = createValidationError(
+                "Query parameter validation failed",
+                (queryValidation.errors || []).map((e: any) => ({
+                  field: e.instancePath?.replace(/^\//, '') || e.params?.missingProperty,
+                  message: e.message || 'Validation failed',
+                  rule: e.keyword,
+                })),
+                'query'
+              );
+              const response = formatRestError(validationError, { requestId, path, method });
+              reply.status(validationError.statusCode).send(response);
               return;
             }
             
@@ -467,11 +498,17 @@ export async function registerRoutes(
             }
             
             if (!validation.valid) {
-              reply.status(400).send({
-                error: "Validation failed",
-                message: validation.errorMessage || validator.formatErrors(validation.errors || []),
-                errors: validation.errors
-              });
+              const validationError = createValidationError(
+                "Request body validation failed",
+                (validation.errors || []).map((e: any) => ({
+                  field: e.instancePath?.replace(/^\//, '') || e.params?.missingProperty,
+                  message: e.message || 'Validation failed',
+                  rule: e.keyword,
+                })),
+                'body'
+              );
+              const response = formatRestError(validationError, { requestId, path, method });
+              reply.status(validationError.statusCode).send(response);
               return;
             }
           }
@@ -619,22 +656,26 @@ export async function registerRoutes(
               
               // Only fail if there are still errors after filtering
               if (filteredErrors.length > 0) {
-                console.error(`❌ Response validation failed for ${handlerLabel}:`, filteredErrors);
-              // In development, return validation errors; in production, log and return generic error
-              if (process.env.NODE_ENV === "development") {
-                reply.status(500).send({
-                  error: "Response validation failed",
-                    message: validator.formatErrors(filteredErrors),
-                    errors: filteredErrors
-                });
+                console.error(`❌ [${requestId}] Response validation failed for ${handlerLabel}:`, filteredErrors);
+                const validationError = new ValidationError(
+                  process.env.NODE_ENV === "development" 
+                    ? "Response validation failed" 
+                    : "Response does not match expected schema",
+                  {
+                    code: ErrorCodes.VALIDATION_RESPONSE,
+                    details: process.env.NODE_ENV === "development" 
+                      ? filteredErrors.map((e: any) => ({
+                          field: e.instancePath?.replace(/^\//, '') || e.params?.missingProperty,
+                          message: e.message || 'Validation failed',
+                          rule: e.keyword,
+                        }))
+                      : undefined,
+                  }
+                );
+                // Response validation errors are 500 since it's a server-side issue
+                const response = formatRestError(validationError, { requestId, path, method });
+                reply.status(500).send(response);
                 return;
-              } else {
-                reply.status(500).send({
-                  error: "Internal server error",
-                  message: "Response does not match expected schema"
-                });
-                return;
-              }
               }
               // All errors were filtered out (relation fields with foreign keys), validation passes
             }
@@ -708,7 +749,8 @@ export async function registerRoutes(
               realtimeAdapter,
               emailService,
               loggerService,
-              metricsService
+              metricsService,
+              requestId
             );
           }
           
@@ -727,28 +769,14 @@ export async function registerRoutes(
                 context: handlerContext,
                 metadata: {
                   handler: handlerLabel,
+                  requestId,
                 },
               };
               monitoringService.onError(error instanceof Error ? error : new Error(String(error)), errorContext);
             } catch (monitoringError) {
-              console.error("Monitoring error in onError:", monitoringError);
+              console.error(`[${requestId}] Monitoring error in onError:`, monitoringError);
             }
           }
-          
-          // Track error metrics
-          const errorType = error instanceof Error ? error.constructor.name : "UnknownError";
-          handlerContext.metrics?.increment("http.errors", 1, {
-            method: request.method,
-            path: request.path,
-            errorType,
-          });
-          
-          // Log error
-          handlerContext.logger?.error("Request failed", error instanceof Error ? error : new Error(String(error)), {
-            method: request.method,
-            path: request.path,
-            handler: handlerLabel,
-          });
           
           // ============================================
           // PHASE 5: ERROR MIDDLEWARE
@@ -767,15 +795,11 @@ export async function registerRoutes(
             }
           } catch (mwError) {
             // If error middleware itself fails, log and continue with default error handling
-            console.error(`Error in error middleware:`, mwError);
+            console.error(`[${requestId}] Error in error middleware:`, mwError);
           }
           
-          // Send error response
-          console.error(`Error in handler ${handlerLabel}:`, error);
-          reply.status(500).send({
-            error: "Internal server error",
-            message: error instanceof Error ? error.message : String(error)
-          });
+          // Use central error handler for standardized response
+          handleError(error, request, reply, handlerContext);
         }
       };
 

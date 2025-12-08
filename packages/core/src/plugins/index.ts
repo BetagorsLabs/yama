@@ -126,3 +126,12 @@ export {
   generateHTMLDocs,
 } from "./docs-generator.js";
 
+// Export plugin lifecycle manager
+export {
+  PluginState,
+  type PluginLifecycleEntry,
+  type LifecycleManagerOptions,
+  PluginLifecycleManager,
+  createLifecycleManager,
+} from "./lifecycle.js";
+
