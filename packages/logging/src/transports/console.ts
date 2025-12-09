@@ -71,10 +71,20 @@ export class ConsoleTransport implements Transport {
   }
 
   /**
-   * Format output with colors if enabled and format is text
+   * Format output with colors if needed
+   * Note: 'pretty' format is already colorized by formatPretty()
    */
   private formatOutput(formatted: string, entry: LogEntry): string {
-    if (this.format === "text" && this.config.colors !== false) {
+    // Pretty format is already colorized by formatters.ts
+    if (this.format === "pretty") {
+      return formatted;
+    }
+    // JSON format should not be colorized
+    if (this.format === "json") {
+      return formatted;
+    }
+    // Text format: apply colors if enabled
+    if (this.config.colors !== false) {
       const color = getLevelColor(entry.level);
       return `${color}${formatted}${colors.reset}`;
     }

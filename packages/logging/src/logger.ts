@@ -89,9 +89,40 @@ export class Logger {
   }
 
   /**
+   * Create a logger for a specific group (feature/module)
+   * Group loggers respect per-group log level settings
+   */
+  group(name: string): Logger {
+    return this.child({ group: name });
+  }
+
+  /**
+   * Get the log level for a specific group
+   */
+  private getGroupLevel(group?: string): LogLevelEnum | null {
+    if (!group || !this.config.groups) {
+      return null;
+    }
+    const groupLevel = this.config.groups[group];
+    if (!groupLevel) {
+      return null;
+    }
+    if (groupLevel === 'off') {
+      return Infinity as LogLevelEnum; // Never log
+    }
+    return parseLogLevel(groupLevel);
+  }
+
+  /**
    * Check if a log level should be logged
    */
   private shouldLog(level: LogLevelEnum): boolean {
+    // Check group-specific level first
+    const group = this.bindings.group as string | undefined;
+    const groupLevel = this.getGroupLevel(group);
+    if (groupLevel !== null) {
+      return level >= groupLevel;
+    }
     return level >= this.level;
   }
 
@@ -284,6 +315,16 @@ export class Logger {
 }
 
 /**
+ * Detect if running in development mode
+ */
+function isDevelopment(): boolean {
+  const nodeEnv = process.env.NODE_ENV?.toLowerCase();
+  const yamaEnv = process.env.YAMA_ENV?.toLowerCase();
+  return nodeEnv === 'development' || nodeEnv === 'dev' ||
+    yamaEnv === 'development' || yamaEnv === 'dev';
+}
+
+/**
  * Create transports from configuration
  */
 export async function createTransports(
@@ -294,9 +335,13 @@ export async function createTransports(
 ): Promise<Transport[]> {
   const transports: Transport[] = [];
 
+  // Auto-detect format based on environment
+  const autoPretty = config.autoPretty !== false && isDevelopment();
+  const defaultFormat = autoPretty ? 'pretty' : 'text';
+
   if (!config.transports || config.transports.length === 0) {
     // Default to console transport if none specified
-    transports.push(createConsoleTransport({ type: "console", format: "text" }));
+    transports.push(createConsoleTransport({ type: "console", format: defaultFormat }));
     return transports;
   }
 

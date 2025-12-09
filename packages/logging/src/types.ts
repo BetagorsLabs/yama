@@ -108,6 +108,11 @@ export interface LoggingPluginConfig {
   redact?: RedactionConfig;
   /** Auto-detect pretty format in development (default: true) */
   autoPretty?: boolean;
+  /** 
+   * Logging groups for per-feature verbosity control
+   * Example: { database: 'debug', auth: 'warn', 'yama:http': 'info' }
+   */
+  groups?: Record<string, 'debug' | 'info' | 'warn' | 'error' | 'off'>;
 }
 
 /**

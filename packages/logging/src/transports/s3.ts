@@ -1,4 +1,4 @@
-import type { LogEntry, Transport, S3TransportConfig } from "../types.js";
+import type { LogEntry, Transport, S3TransportConfig, LogFormat } from "../types.js";
 import type { StorageBucket } from "@betagors/yama-core";
 import { formatLogEntry } from "../formatters.js";
 
@@ -10,7 +10,7 @@ export class S3Transport implements Transport {
   private bucket: StorageBucket | null = null;
   private batch: string[] = [];
   private batchSize: number;
-  private format: "json" | "text";
+  private format: LogFormat;
   private flushTimer: NodeJS.Timeout | null = null;
   private currentDate: string = "";
 

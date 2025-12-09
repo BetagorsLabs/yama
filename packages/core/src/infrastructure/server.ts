@@ -39,16 +39,16 @@ export interface HandlerContext {
   params: Record<string, unknown>;
   body: unknown;
   headers: Record<string, string | undefined>;
-  
+
   // Request identification (for tracing/logging)
   requestId?: string;
-  
+
   // Authentication context
   auth?: AuthContext;
-  
+
   // Response helpers
   status(code: number): HandlerContext;
-  
+
   // Framework services (for future extensibility)
   db?: unknown; // Direct database adapter access
   entities?: Record<string, unknown>; // Entity repositories (e.g., context.entities.Product)
@@ -81,7 +81,7 @@ export interface HandlerContext {
       rejected: string[];
       response?: string;
     }>;
-    
+
     /**
      * Send multiple emails in batch
      */
@@ -122,7 +122,7 @@ export interface HandlerContext {
         excludeUserId?: string; // Send to all except this user
       }
     ): Promise<void>;
-    
+
     /**
      * Publish an event to a channel (fire-and-forget, logs errors but doesn't throw)
      */
@@ -135,7 +135,7 @@ export interface HandlerContext {
         excludeUserId?: string;
       }
     ): void;
-    
+
     /**
      * Broadcast an event to all clients in a channel
      */
@@ -148,13 +148,13 @@ export interface HandlerContext {
         excludeUserId?: string;
       }
     ): Promise<void>;
-    
+
     /**
      * Get connected clients for a channel
      * Returns user IDs or connection IDs
      */
     getClients(channel: string): Promise<string[]>;
-    
+
     /**
      * Check if realtime is available
      */
@@ -177,8 +177,19 @@ export interface HandlerContext {
      * Log a debug message with optional metadata
      */
     debug(message: string, meta?: Record<string, unknown>): void;
+    /**
+     * Create a child logger with additional bound context
+     * Useful for adding request-scoped metadata (e.g., requestId, userId)
+     */
+    child?(bindings: Record<string, unknown>): HandlerContext['logger'];
   };
-  
+
+  /**
+   * Resolved configuration values
+   * Validated at startup based on the config schema in yama.yaml
+   */
+  config?: Record<string, string | number | boolean | undefined>;
+
   metrics?: {
     /**
      * Increment a counter metric
@@ -193,7 +204,7 @@ export interface HandlerContext {
      */
     gauge(name: string, value: number, tags?: Record<string, string>): void;
   };
-  
+
   tracing?: {
     /**
      * Start a trace span (for future tracing support)
@@ -204,16 +215,16 @@ export interface HandlerContext {
      */
     getCurrentSpan(): TraceSpan | undefined;
   };
-  
+
   // Original request/reply for edge cases
   _original?: {
     request: HttpRequest;
     reply: HttpResponse;
   };
-  
+
   // Internal: status code set by handler (used by runtime)
   _statusCode?: number;
-  
+
   [key: string]: unknown; // Allow additional properties
 }
 

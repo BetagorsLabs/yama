@@ -14,11 +14,17 @@ export {
   type S3TransportConfig,
   type LoggingPluginConfig,
   type AnyTransportConfig,
+  type RedactionConfig,
 } from "./types.js";
-export { formatText, formatJSON, formatLogEntry } from "./formatters.js";
+export { formatText, formatJSON, formatPretty, formatLogEntry } from "./formatters.js";
 export { createConsoleTransport } from "./transports/console.js";
 export { createFileTransport } from "./transports/file.js";
 export { createS3Transport } from "./transports/s3.js";
+export {
+  createLoggingMiddleware,
+  createContextLogger,
+  type LoggingMiddlewareOptions,
+} from "./middleware.js";
 
 
 

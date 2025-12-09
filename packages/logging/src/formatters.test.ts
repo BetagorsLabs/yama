@@ -115,7 +115,9 @@ describe("Log Formatters", () => {
       expect(parsed.error).toBeDefined();
       expect(parsed.error.message).toBe("Test error");
       expect(parsed.error.name).toBe("Error");
-      expect(parsed.error.stack).toBe("Error: Test error\n    at test.js:1:1");
+      // Stack is now an array of stack frames for easier processing
+      expect(Array.isArray(parsed.error.stack)).toBe(true);
+      expect(parsed.error.stack).toContain("at test.js:1:1");
     });
 
     it("should handle entry without metadata or error", () => {

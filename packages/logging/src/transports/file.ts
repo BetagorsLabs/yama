@@ -1,4 +1,4 @@
-import type { LogEntry, Transport, FileTransportConfig } from "../types.js";
+import type { LogEntry, Transport, FileTransportConfig, LogFormat } from "../types.js";
 import type { StorageBucket } from "@betagors/yama-core";
 import { formatLogEntry } from "../formatters.js";
 
@@ -50,7 +50,7 @@ export class FileTransport implements Transport {
   private maxFileSize: number;
   private maxFiles: number;
   private rotationEnabled: boolean;
-  private format: "json" | "text";
+  private format: LogFormat;
   private flushTimer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -125,7 +125,8 @@ export class FileTransport implements Transport {
         } else {
           // Convert ReadableStream to Buffer
           const chunks: Uint8Array[] = [];
-          const reader = existing.getReader();
+          const stream = existing as ReadableStream<Uint8Array>;
+          const reader = stream.getReader();
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -172,7 +173,8 @@ export class FileTransport implements Transport {
             } else {
               // Convert ReadableStream to Buffer
               const chunks: Uint8Array[] = [];
-              const reader = content.getReader();
+              const stream = content as ReadableStream<Uint8Array>;
+              const reader = stream.getReader();
               while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -196,7 +198,8 @@ export class FileTransport implements Transport {
         } else {
           // Convert ReadableStream to Buffer
           const chunks: Uint8Array[] = [];
-          const reader = content.getReader();
+          const stream = content as ReadableStream<Uint8Array>;
+          const reader = stream.getReader();
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
