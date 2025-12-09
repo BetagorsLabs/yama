@@ -942,6 +942,39 @@ export async function startYamaNodeRuntime(
     console.log(`✅ Registered metrics endpoint: GET /_metrics`);
   }
 
+  // ===== Register AdminX dev UI (if plugin installed) =====
+  const adminPlugin = pluginRegistry.getPluginsByCategory("devtools")?.find((p) => p.name === "@betagors/yama-adminx");
+  if (adminPlugin) {
+    const adminApi: any = pluginRegistry.getPluginAPI(adminPlugin.name);
+    if (adminApi && typeof adminApi.registerRoutes === "function") {
+      try {
+        adminApi.registerRoutes({
+          serverAdapter,
+          server,
+          config,
+          configDir,
+          projectDir: configDir || process.cwd(),
+          entities: config?.entities,
+          schemas: config?.schemas,
+          repositories,
+          nodeEnv,
+        });
+        const adminConfig = typeof adminApi.getConfig === "function" ? adminApi.getConfig() : null;
+        const adminPath = adminConfig?.path || "/adminx";
+        if (adminConfig?.enabled !== false) {
+          console.log(`✅ Registered AdminX routes at ${adminPath}`);
+        } else {
+          console.log(`ℹ️  AdminX plugin disabled by config`);
+        }
+      } catch (error) {
+        console.warn(
+          "⚠️  Failed to register AdminX routes:",
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    }
+  }
+
   // ===== Register routes from configuration =====
   const hasEndpoints = config && (config.endpoints || config.apis?.rest);
   if (hasEndpoints && serverAdapter && configDir && config) {

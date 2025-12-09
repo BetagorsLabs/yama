@@ -19,9 +19,9 @@ const Logo = () => (
 export default {
   logo: <Logo />,
   project: {
-    link: 'https://github.com/BetagorsLabs/yama',
+    link: 'https://github.com/betagors/yamajs',
   },
-  docsRepositoryBase: 'https://github.com/BetagorsLabs/yama/tree/main/apps/docs-site',
+  docsRepositoryBase: 'https://github.com/betagors/yamajs/tree/main/apps/docs-site',
   footer: {
     text: `MIT ${new Date().getFullYear()} © Yama JS.`,
   },

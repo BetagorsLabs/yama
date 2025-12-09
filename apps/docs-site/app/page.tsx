@@ -1,4 +1,8 @@
 import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
+import { Badge } from './components/ui/badge';
+import { Button } from './components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
 
 const features = [
   {
@@ -40,64 +44,86 @@ const steps = [
 
 export default function HomePage() {
   return (
-    <div className="relative isolate overflow-hidden">
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),transparent_45%),radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.2),transparent_32%)] opacity-70 dark:bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),transparent_40%),radial-gradient(circle_at_20%_20%,rgba(129,140,248,0.18),transparent_30%)]" />
+    <div className="relative min-h-screen overflow-hidden bg-[#0b1224] text-white selection:bg-primary/30">
+      {/* Background Effects */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(56,189,248,0.15),transparent_40%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_0%_50%,rgba(99,102,241,0.1),transparent_40%)]" />
+        <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.03]" />
+      </div>
 
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-16 px-4 pb-20 pt-12 sm:pt-16">
-        <header className="flex flex-col gap-12 lg:flex-row lg:items-center">
-          <div className="flex-1 space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200/80 bg-white/70 px-3 py-1 text-xs font-semibold text-neutral-700 shadow-sm backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/70 dark:text-neutral-200">
-              <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+      <div className="container relative z-10 mx-auto flex max-w-7xl flex-col gap-20 px-4 py-20 lg:py-32">
+        {/* Hero Section */}
+        <header className="grid items-center gap-12 lg:grid-cols-[1.1fr,0.9fr]">
+          <div className="space-y-8">
+            <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm font-medium text-primary-foreground backdrop-blur-sm transition hover:bg-white/10">
+              <span className="mr-2 flex h-2 w-2">
+                <span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+              </span>
               Configuration-first backend platform
             </div>
-            <div className="space-y-4">
-              <h1 className="text-4xl font-semibold leading-tight text-neutral-900 dark:text-white sm:text-5xl">
-                Build APIs the Next.js way—fast, typed, and in sync.
+            
+            <div className="space-y-6">
+              <h1 className="text-5xl font-bold tracking-tight text-white md:text-6xl lg:text-7xl">
+                Build APIs from <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">YAML</span>
               </h1>
-              <p className="text-lg text-neutral-600 dark:text-neutral-300 sm:text-xl">
-                Yama reads your YAML config, generates type-safe routes, SDKs, and docs from a single IR, and lets you
-                keep all your logic in clean TypeScript handlers.
+              <p className="text-xl leading-relaxed text-slate-300 max-w-xl">
+                Yama reads your config, generates type-safe routes, SDKs, and docs from a single IR, and keeps your handlers clean in TypeScript.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/docs/getting-started"
-                className="inline-flex items-center justify-center rounded-full bg-[#0070f3] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-500/30 transition hover:-translate-y-0.5 hover:shadow-xl"
+
+            <div className="flex flex-wrap gap-4">
+              <Button asChild size="lg" className="h-12 px-8 text-base shadow-glow hover:shadow-glow-lg transition-all duration-300">
+                <Link href="/docs/getting-started">
+                  Get started
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </Button>
+              <Button
+                asChild
+                variant="outline"
+                size="lg"
+                className="h-12 px-8 text-base border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white transition-all"
               >
-                Get started
-              </Link>
-              <Link
-                href="/docs"
-                className="inline-flex items-center justify-center rounded-full border border-neutral-300/80 bg-white/80 px-5 py-2.5 text-sm font-semibold text-neutral-800 transition hover:-translate-y-0.5 hover:border-neutral-400 hover:text-neutral-900 dark:border-neutral-800 dark:bg-neutral-900/70 dark:text-neutral-100 dark:hover:border-neutral-700"
-              >
-                View docs
-              </Link>
+                <Link href="/docs">View Documentation</Link>
+              </Button>
             </div>
-            <div className="flex flex-wrap gap-3 text-sm text-neutral-600 dark:text-neutral-300">
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 font-medium text-neutral-700 shadow-sm ring-1 ring-neutral-200/70 backdrop-blur dark:bg-neutral-900/70 dark:text-neutral-200 dark:ring-neutral-800/70">
-                <span className="font-mono text-xs text-emerald-500">IR</span>
-                One source of truth for SDKs, docs, and runtime
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 font-medium text-neutral-700 shadow-sm ring-1 ring-neutral-200/70 backdrop-blur dark:bg-neutral-900/70 dark:text-neutral-200 dark:ring-neutral-800/70">
-                <span className="font-mono text-xs text-sky-500">TS</span>
-                Handlers stay in TypeScript
-              </span>
+
+            <div className="flex items-center gap-6 text-sm text-slate-400">
+              <div className="flex items-center gap-2">
+                <div className="h-1 w-1 rounded-full bg-emerald-400" />
+                <span>Type-safe IR</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-1 w-1 rounded-full bg-blue-400" />
+                <span>Auto-generated SDKs</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-1 w-1 rounded-full bg-purple-400" />
+                <span>Zero-boilerplate</span>
+              </div>
             </div>
           </div>
 
-          <div className="flex-1">
-            <div className="rounded-2xl border border-neutral-200/80 bg-white/90 p-5 shadow-2xl shadow-sky-100/60 ring-1 ring-white/80 backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80 dark:shadow-none dark:ring-neutral-900">
-              <div className="mb-4 flex items-center justify-between text-xs font-semibold text-neutral-500 dark:text-neutral-400">
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  yama.yaml
-                </span>
-                <span className="rounded-full bg-neutral-100 px-2 py-1 font-mono text-[10px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
-                  synced → IR → SDK
-                </span>
-              </div>
-              <pre className="overflow-hidden rounded-xl border border-neutral-200/70 bg-neutral-900 px-4 py-4 text-sm text-neutral-50 shadow-inner shadow-black/20 dark:border-neutral-800">
-                <code className="block leading-relaxed">
+          <div className="relative mx-auto w-full max-w-lg lg:max-w-none">
+            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-blue-500 to-emerald-500 opacity-20 blur-2xl" />
+            <Card className="relative border-white/10 bg-[#0b1424]/80 backdrop-blur-xl shadow-2xl">
+              <CardHeader className="flex flex-row items-center justify-between border-b border-white/5 pb-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1.5">
+                    <div className="h-3 w-3 rounded-full bg-red-500/20" />
+                    <div className="h-3 w-3 rounded-full bg-yellow-500/20" />
+                    <div className="h-3 w-3 rounded-full bg-green-500/20" />
+                  </div>
+                  <span className="ml-2 text-xs font-medium text-slate-400">yama.yaml</span>
+                </div>
+                <Badge variant="secondary" className="bg-white/5 text-xs text-slate-300 font-mono">
+                  v0.1.0
+                </Badge>
+              </CardHeader>
+              <CardContent className="p-0">
+                <pre className="overflow-x-auto p-6 font-mono text-sm leading-relaxed text-slate-200">
 {`name: yamajs-demo
 version: 0.1.0
 
@@ -107,7 +133,7 @@ schemas:
     properties:
       id: { type: string, format: uuid }
       title: { type: string }
-      completed: { type: boolean, default: false }
+      completed: { type: boolean }
 
 endpoints:
   /todos:
@@ -115,124 +141,134 @@ endpoints:
       handler: handlers/listTodos
       response:
         type: array
-        items: { $ref: '#/schemas/Todo' }
-    post:
-      handler: handlers/createTodo
-      request:
-        body: { $ref: '#/schemas/Todo' }`}
-                </code>
-              </pre>
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-neutral-600 dark:text-neutral-300">
-                <span className="rounded-full bg-neutral-100 px-3 py-1 font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
-                  CLI: <code className="font-mono">yama dev</code>
-                </span>
-                <span className="rounded-full bg-neutral-100 px-3 py-1 font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
-                  Docs: <code className="font-mono">yama docs</code>
-                </span>
-                <span className="rounded-full bg-neutral-100 px-3 py-1 font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
-                  SDK: <code className="font-mono">yama sdk --lang ts</code>
-                </span>
-              </div>
-            </div>
+        items: { $ref: '#/schemas/Todo' }`}
+                </pre>
+              </CardContent>
+            </Card>
           </div>
         </header>
 
-        <section className="grid gap-5 md:grid-cols-2">
-          {features.map((feature) => (
-            <div
-              key={feature.title}
-              className="rounded-2xl border border-neutral-200/80 bg-white/80 p-6 shadow-sm ring-1 ring-white/80 backdrop-blur transition hover:-translate-y-1 hover:shadow-lg dark:border-neutral-800/80 dark:bg-neutral-900/70 dark:ring-neutral-900"
-            >
-              <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">{feature.title}</h3>
-              <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">{feature.description}</p>
-            </div>
-          ))}
+        {/* Features Grid */}
+        <section className="space-y-12">
+          <div className="text-center space-y-4">
+            <h2 className="text-3xl font-bold text-white md:text-4xl">Why teams choose Yama</h2>
+            <p className="text-slate-400 max-w-2xl mx-auto">
+              Stop maintaining boilerplate. Define your contract once and let Yama handle the rest.
+            </p>
+          </div>
+          
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+            {features.map((feature) => (
+              <Card key={feature.title} className="group border-white/5 bg-white/[0.02] backdrop-blur-sm transition-all hover:border-white/10 hover:bg-white/[0.04] hover:-translate-y-1">
+                <CardHeader>
+                  <CardTitle className="text-lg font-semibold text-slate-100">{feature.title}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CardDescription className="text-slate-400 leading-relaxed">
+                    {feature.description}
+                  </CardDescription>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </section>
 
-        <section className="rounded-2xl border border-neutral-200/80 bg-white/90 p-8 shadow-lg ring-1 ring-white/80 backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/70 dark:ring-neutral-900">
-          <div className="grid gap-8 md:grid-cols-2 md:items-start">
-            <div className="space-y-4">
-              <h2 className="text-2xl font-semibold text-neutral-900 dark:text-white">From config to runtime</h2>
-              <p className="text-base text-neutral-600 dark:text-neutral-300">
-                Yama keeps structure and logic cleanly separated. Configuration defines the contract; TypeScript defines
-                the behavior. The IR ensures SDKs, docs, and runtime stay aligned.
-              </p>
-              <div className="grid gap-3">
+        {/* Workflow Section */}
+        <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.02] p-8 md:p-12">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-transparent to-emerald-500/5" />
+          <div className="relative grid gap-12 lg:grid-cols-2 lg:items-center">
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <h2 className="text-3xl font-bold text-white">From config to runtime</h2>
+                <p className="text-slate-400 text-lg">
+                  Configuration defines the contract; TypeScript defines the behavior. The IR keeps SDKs, docs, and runtime aligned.
+                </p>
+              </div>
+              
+              <div className="space-y-6">
                 {steps.map((step, index) => (
-                  <div key={step.title} className="flex gap-3 rounded-xl border border-neutral-200/80 bg-white/90 p-4 dark:border-neutral-800/80 dark:bg-neutral-900/70">
-                    <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900 text-sm font-semibold text-white dark:bg-white dark:text-neutral-900">
-                      {index + 1}
+                  <div key={step.title} className="flex gap-4">
+                    <div className="flex-none">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 text-sm font-bold text-primary ring-1 ring-primary/50">
+                        {index + 1}
+                      </div>
                     </div>
                     <div>
-                      <div className="text-sm font-semibold text-neutral-900 dark:text-white">{step.title}</div>
-                      <p className="text-sm text-neutral-600 dark:text-neutral-300">{step.copy}</p>
+                      <h3 className="font-semibold text-slate-100">{step.title}</h3>
+                      <p className="mt-1 text-slate-400">{step.copy}</p>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="flex flex-wrap gap-3">
-                <Link
-                  href="/docs/guides"
-                  className="inline-flex items-center justify-center rounded-full border border-neutral-300/80 px-4 py-2 text-sm font-semibold text-neutral-800 transition hover:-translate-y-0.5 hover:border-neutral-400 hover:text-neutral-900 dark:border-neutral-800 dark:text-neutral-100 dark:hover:border-neutral-700"
-                >
-                  Browse guides
-                </Link>
-                <Link
-                  href="/docs/examples"
-                  className="inline-flex items-center justify-center rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:bg-white dark:text-neutral-900"
-                >
-                  See examples
-                </Link>
+
+              <div className="flex gap-4 pt-4">
+                <Button asChild variant="secondary" className="bg-white/10 text-white hover:bg-white/20">
+                  <Link href="/docs/guides">Browse guides</Link>
+                </Button>
+                <Button asChild variant="ghost" className="text-slate-300 hover:text-white hover:bg-white/5">
+                  <Link href="/docs/examples">See examples <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                </Button>
               </div>
             </div>
-            <div className="flex flex-col gap-4 rounded-2xl border border-neutral-200/80 bg-neutral-950 p-6 text-neutral-50 shadow-inner shadow-black/30 dark:border-neutral-800">
-              <div className="text-sm font-semibold text-neutral-300">Handler example</div>
-              <pre className="overflow-auto rounded-xl bg-neutral-900/70 p-4 text-sm text-neutral-50 ring-1 ring-neutral-800">
-                <code className="block leading-relaxed">
+
+            <div className="relative rounded-xl border border-white/10 bg-[#0b1424] shadow-2xl">
+              <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
+                <span className="text-xs font-medium text-slate-400">handlers/todos.ts</span>
+                <div className="flex gap-1.5">
+                  <div className="h-2.5 w-2.5 rounded-full bg-white/10" />
+                  <div className="h-2.5 w-2.5 rounded-full bg-white/10" />
+                </div>
+              </div>
+              <pre className="overflow-x-auto p-6 font-mono text-sm leading-relaxed text-slate-200">
 {`import { HandlerContext } from '@betagors/yama-core';
 
 export async function listTodos(ctx: HandlerContext) {
-  return ctx.db.select('todos').orderBy('createdAt', 'desc');
+  // Types are automatically inferred from schema
+  return ctx.db.select('todos')
+    .orderBy('createdAt', 'desc');
 }
 
 export async function createTodo(ctx: HandlerContext) {
+  // Body is validated before reaching handler
   const todo = await ctx.db.insert('todos', ctx.body);
   return { id: todo.id, ...ctx.body };
 }`}
-                </code>
               </pre>
-              <p className="text-sm text-neutral-300">
-                Keep logic in TypeScript, while validation, routing, and typing come straight from your YAML contract.
-              </p>
             </div>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-neutral-200/80 bg-white/90 p-8 shadow-sm ring-1 ring-white/80 backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/70 dark:ring-neutral-900">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">Ready to build?</h3>
-              <p className="text-sm text-neutral-600 dark:text-neutral-300">
-                Install the CLI, start the dev server, and open the docs to ship your first endpoint in minutes.
-              </p>
+        {/* CTA Section */}
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-blue-600 px-6 py-16 text-center md:px-12 lg:py-20">
+          <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10" />
+          <div className="relative z-10 mx-auto max-w-2xl space-y-8">
+            <h2 className="text-3xl font-bold text-white md:text-4xl">Ready to build?</h2>
+            <p className="text-lg text-blue-100">
+              Install the CLI, start the dev server, and open the docs to ship your first endpoint in minutes.
+            </p>
+            
+            <div className="flex flex-col items-center gap-6">
+              <div className="flex flex-wrap justify-center gap-4">
+                <Button asChild size="lg" variant="secondary" className="h-12 px-8 text-base shadow-lg hover:shadow-xl">
+                  <Link href="/docs">Read the Docs</Link>
+                </Button>
+                <Button asChild size="lg" variant="outline" className="h-12 border-white/20 bg-white/10 px-8 text-base text-white hover:bg-white/20 hover:text-white">
+                  <Link href="https://github.com/betagors/yamajs">Star on GitHub</Link>
+                </Button>
+              </div>
+              
+              <div className="flex items-center gap-3 rounded-full bg-black/20 px-4 py-2 text-sm font-mono text-blue-100 backdrop-blur-sm">
+                <span>npm install -g @betagors/yama-cli</span>
+                <button 
+                  className="ml-2 rounded p-1 hover:bg-white/10"
+                  aria-label="Copy command"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/docs"
-                className="inline-flex items-center justify-center rounded-full bg-[#0070f3] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-500/30 transition hover:-translate-y-0.5 hover:shadow-xl"
-              >
-                Open docs
-              </Link>
-              <Link
-                href="/docs/getting-started"
-                className="inline-flex items-center justify-center rounded-full border border-neutral-300/80 px-4 py-2 text-sm font-semibold text-neutral-800 transition hover:-translate-y-0.5 hover:border-neutral-400 hover:text-neutral-900 dark:border-neutral-800 dark:text-neutral-100 dark:hover:border-neutral-700"
-              >
-                Getting started
-              </Link>
-            </div>
-          </div>
-          <div className="mt-4 overflow-x-auto rounded-xl border border-dashed border-neutral-300/80 bg-neutral-50 px-4 py-3 font-mono text-sm text-neutral-800 dark:border-neutral-800/80 dark:bg-neutral-950 dark:text-neutral-200">
-            npm install -g @betagors/yama-cli
           </div>
         </section>
       </div>

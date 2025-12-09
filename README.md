@@ -11,7 +11,7 @@
   [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
   [![npm version](https://img.shields.io/npm/v/@betagors/yama-cli)](https://www.npmjs.com/package/@betagors/yama-cli)
   
-  [Documentation](https://yamajs.org) • [Examples](./examples) • [GitHub](https://github.com/BetagorsLabs/yama) • [Discussions](https://github.com/BetagorsLabs/yama/discussions)
+  [Documentation](https://yamajs.org) • [Examples](./examples) • [GitHub](https://github.com/betagors/yamajs) • [Discussions](https://github.com/betagors/yamajs/discussions)
 </div>
 
 ---
@@ -199,6 +199,23 @@ yama endpoints          # List all endpoints
 yama schemas            # List all schemas
 ```
 
+## 🧰 Dev Admin (AdminX)
+
+- Optional plugin `@betagors/yama-adminx` for a dev-only admin UI (CRUD, schema/endpoints view, migrations summary).
+- Enabled by default in development, disabled in production unless explicitly allowed.
+- Requires a token: `Authorization: Bearer dev-adminx` by default. Set `ADMINX_PASSWORD` (or `YAMA_ADMINX_PASSWORD`) to override.
+- Default path: `/adminx`
+
+```yaml
+plugins:
+  "@betagors/yama-adminx":
+    enabled: true            # auto-true in dev, false in prod
+    path: /adminx
+    requireAuth: true
+    allowInProduction: false # set true only if you intentionally expose it
+    # devPassword: ${ADMINX_PASSWORD}
+```
+
 ## 🏗️ Architecture
 
 Yama is built as a **monorepo** using pnpm workspaces and Turborepo:
@@ -289,8 +306,8 @@ See the [full roadmap](./docs/ROADMAP.md) for detailed plans.
 ## 📞 Support
 
 - 📖 [Documentation](https://yamajs.org)
-- 💬 [GitHub Discussions](https://github.com/BetagorsLabs/yama/discussions)
-- 🐛 [Issue Tracker](https://github.com/BetagorsLabs/yama/issues)
+- 💬 [GitHub Discussions](https://github.com/betagors/yamajs/discussions)
+- 🐛 [Issue Tracker](https://github.com/betagors/yamajs/issues)
 
 ---
 

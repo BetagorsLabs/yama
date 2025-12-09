@@ -1,15 +1,8 @@
-import { useMDXComponents as getThemeComponents } from 'nextra-theme-docs';
 import type { MDXComponents } from 'mdx/types';
-import { Cards, Card } from './app/components/Cards';
+// import { Cards, Card } from './app/components/Cards'; // Uncomment if you want to keep using these
 
-const themeComponents = getThemeComponents();
-
-export function useMDXComponents(components?: MDXComponents): MDXComponents {
+export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
-    ...themeComponents,
-    Cards,
-    Card,
     ...components,
-  } as MDXComponents;
+  }
 }
-

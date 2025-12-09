@@ -1,28 +1,12 @@
-import nextra from 'nextra';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
+import createMDX from '@next/mdx';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const withNextra = nextra({
-  // Nextra 4.0 configuration
-  // Theme configuration is now done in layout.jsx
-});
-
-export default withNextra({
-  // Next.js configuration
-  experimental: {
-    mdxRs: false,
-  },
-  // Configure MDX import source
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   pageExtensions: ['js', 'jsx', 'mdx', 'ts', 'tsx'],
-  webpack: (config) => {
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      'next-mdx-import-source-file': resolve(__dirname, 'app', 'mdx-components.tsx'),
-    };
-    return config;
-  },
+};
+
+const withMDX = createMDX({
+  // Add markdown plugins here, as desired
 });
 
+export default withMDX(nextConfig);
