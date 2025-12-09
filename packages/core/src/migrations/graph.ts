@@ -1,8 +1,10 @@
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
 import type { Transition } from "./transitions.js";
 import { getAllSnapshotHashes } from "./snapshots.js";
 import { getTransitionsDir, ensureTransitionsDir, getAllTransitions } from "./transitions.js";
+import { getFileSystem, getPathModule } from "../platform/fs.js";
+
+const fs = () => getFileSystem();
+const path = () => getPathModule();
 
 /**
  * Result of finding a path between two snapshots
@@ -26,7 +28,7 @@ export interface TransitionGraph {
  * Get graph file path
  */
 export function getGraphPath(configDir: string): string {
-  return join(configDir, ".yama", "graph.json");
+  return path().join(configDir, ".yama", "graph.json");
 }
 
 /**
@@ -35,12 +37,12 @@ export function getGraphPath(configDir: string): string {
 export function loadGraph(configDir: string): TransitionGraph {
   const graphPath = getGraphPath(configDir);
   
-  if (!existsSync(graphPath)) {
+  if (!fs().existsSync(graphPath)) {
     return buildGraph(configDir);
   }
   
   try {
-    const content = readFileSync(graphPath, "utf-8");
+    const content = fs().readFileSync(graphPath, "utf-8");
     const data = JSON.parse(content) as {
       nodes: string[];
       edges: Record<string, string[]>;
@@ -131,7 +133,7 @@ export function saveGraph(configDir: string, graph: TransitionGraph): void {
     transitionHashes: Array.from(graph.transitions.keys()),
   };
   
-  writeFileSync(graphPath, JSON.stringify(data, null, 2), "utf-8");
+  fs().writeFileSync(graphPath, JSON.stringify(data, null, 2), "utf-8");
 }
 
 /**

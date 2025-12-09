@@ -1,8 +1,8 @@
-import { readFileSync, existsSync } from "fs";
-import { join, dirname, resolve } from "path";
 import { pathToFileURL } from "url";
 import type { PluginManifest, YamaPlugin } from "./base.js";
 import { PluginError, ErrorCodes } from "@betagors/yama-errors";
+import { getFileSystem, getPathModule } from "../platform/fs.js";
+import { getEnvProvider } from "../platform/env.js";
 
 /**
  * Load plugin manifest from package.json
@@ -13,15 +13,17 @@ export async function loadPluginFromPackage(
   packageName: string,
   projectDir?: string
 ): Promise<PluginManifest> {
+  const fs = getFileSystem();
+  const path = getPathModule();
   // Try to resolve the package
   let packagePath: string;
   try {
     const { createRequire } = await import("module");
     
     // Try to resolve from project directory (use process.cwd() if not provided)
-    const projectRoot = projectDir || process.cwd();
+    const projectRoot = projectDir || getEnvProvider().cwd();
     try {
-      const projectRequire = createRequire(resolve(projectRoot, "package.json"));
+      const projectRequire = createRequire(path.resolve(projectRoot, "package.json"));
       packagePath = projectRequire.resolve(packageName);
     } catch {
       // If that fails, try from current context (for workspace scenarios)
@@ -57,13 +59,13 @@ export async function loadPluginFromPackage(
   let packageJsonPath: string | null = null;
 
   // Walk up the directory tree to find package.json
-  while (currentPath !== dirname(currentPath)) {
-    const potentialPath = join(currentPath, "package.json");
-    if (existsSync(potentialPath)) {
+  while (currentPath !== path.dirname(currentPath)) {
+    const potentialPath = path.join(currentPath, "package.json");
+    if (fs.existsSync(potentialPath)) {
       packageJsonPath = potentialPath;
       break;
     }
-    currentPath = dirname(currentPath);
+    currentPath = path.dirname(currentPath);
   }
 
   if (!packageJsonPath) {
@@ -78,7 +80,7 @@ export async function loadPluginFromPackage(
   }
 
   // Read and parse package.json
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
 
   // Extract yama metadata
   const yamaMetadata = packageJson.yama;
@@ -121,6 +123,8 @@ export async function importPlugin(
   packageName: string,
   projectDir?: string
 ): Promise<YamaPlugin> {
+  const fs = getFileSystem();
+  const path = getPathModule();
   // Resolve entry point
   let entryPoint: string;
   let packageJson: { version?: string } = {};
@@ -128,10 +132,10 @@ export async function importPlugin(
     const { createRequire } = await import("module");
     
     // Try to resolve from project directory (use process.cwd() if not provided)
-    const projectRoot = projectDir || process.cwd();
+    const projectRoot = projectDir || getEnvProvider().cwd();
     let packagePath: string;
     try {
-      const projectRequire = createRequire(resolve(projectRoot, "package.json"));
+      const projectRequire = createRequire(path.resolve(projectRoot, "package.json"));
       packagePath = projectRequire.resolve(packageName);
     } catch {
       // If that fails, try from current context (for workspace scenarios)
@@ -142,12 +146,12 @@ export async function importPlugin(
     const packageDir = dirname(
       packagePath.replace(/\/[^/]+$/, "").replace(/\\[^\\]+$/, "")
     );
-    entryPoint = join(packageDir, manifest.entryPoint || "./dist/plugin.ts");
+    entryPoint = path.join(packageDir, manifest.entryPoint || "./dist/plugin.ts");
     
     // Try to read package.json for version
-    const packageJsonPath = join(packageDir, "package.json");
-    if (existsSync(packageJsonPath)) {
-      packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
+    const packageJsonPath = path.join(packageDir, "package.json");
+    if (fs.existsSync(packageJsonPath)) {
+      packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
     }
   } catch (error) {
     throw new PluginError(

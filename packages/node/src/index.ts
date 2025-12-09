@@ -38,11 +38,21 @@ import {
   loadMiddlewareFromFile,
   type MiddlewareDefinition,
   type DatabaseConfig,
+  generateIR,
+  setFileSystem,
+  setPathModule,
+  setEnvProvider,
+  setCryptoProvider,
+  setPasswordHasher,
 } from "@betagors/yama-core";
 import { createFastifyAdapter } from "@betagors/yama-fastify";
 import yaml from "js-yaml";
 import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
+import * as nodeFs from "fs";
+import * as nodePath from "path";
+import * as nodeCrypto from "crypto";
+import bcrypt from "bcryptjs";
 
 // ===== Module imports =====
 import type { YamaConfig, YamaServer, EndpointDefinition } from "./types.js";
@@ -52,6 +62,36 @@ import { registerRoutes } from "./route-registration.js";
 // ===== Re-exports for convenience =====
 export type { YamaConfig, YamaServer, EndpointDefinition };
 export * from "./types.js";
+
+function configureNodePlatformAdapters(): void {
+  setFileSystem(nodeFs);
+  setPathModule(nodePath);
+  setEnvProvider({
+    getEnv: (name: string) => process.env[name],
+    setEnv: (name: string, value?: string) => {
+      if (typeof value === "undefined") {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    },
+    cwd: () => process.cwd(),
+  });
+  setCryptoProvider({
+    randomBytes: (length: number) => new Uint8Array(nodeCrypto.randomBytes(length)),
+    randomInt: (min: number, max: number) => nodeCrypto.randomInt(min, max),
+    timingSafeEqual: (a: Uint8Array, b: Uint8Array) => {
+      if (a.length !== b.length) {
+        return false;
+      }
+      return nodeCrypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+    },
+  });
+  setPasswordHasher({
+    hash: (password: string, saltRounds = 12) => bcrypt.hash(password, saltRounds),
+    verify: (password: string, hash: string) => bcrypt.compare(password, hash),
+  });
+}
 
 /**
  * Dynamic import for OpenAPI package to handle workspace resolution
@@ -102,6 +142,7 @@ export async function startYamaNodeRuntime(
   yamlConfigPath?: string,
   environment?: string
 ): Promise<YamaServer> {
+  configureNodePlatformAdapters();
   // Register HTTP server adapter (always needed)
   registerHttpServerAdapter("fastify", (options) => createFastifyAdapter(options));
 
@@ -634,6 +675,47 @@ export async function startYamaNodeRuntime(
   serverAdapter.registerRoute(server, "GET", "/config", async (request: HttpRequest, reply: HttpResponse) => {
     return { config };
   });
+
+  const nodeEnv = process.env.NODE_ENV || "development";
+  const exposeIr = nodeEnv !== "production" || process.env.YAMA_EXPOSE_IR === "true";
+  if (exposeIr) {
+    serverAdapter.registerRoute(server, "GET", "/yama/ir", async (request: HttpRequest, reply: HttpResponse) => {
+      if (!config) {
+        reply.status(404).send({ error: "No config loaded" });
+        return;
+      }
+
+      // In production, require explicit opt-in and token if provided
+      const isProd = nodeEnv === "production";
+      if (isProd && process.env.YAMA_EXPOSE_IR !== "true") {
+        reply.status(404).send({ error: "Not found" });
+        return;
+      }
+
+      if (isProd) {
+        const token = process.env.YAMA_IR_TOKEN;
+        if (token) {
+          const authHeader = (request.headers?.authorization as string | undefined) || "";
+          const headerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+          const xToken = (request.headers?.["x-yama-ir-token"] as string | undefined) || "";
+          if (headerToken !== token && xToken !== token) {
+            reply.status(401).send({ error: "Unauthorized" });
+            return;
+          }
+        }
+      }
+
+      try {
+        const ir = generateIR(config as any);
+        reply.type("application/json").send(ir);
+      } catch (error) {
+        reply.status(500).send({
+          error: "Failed to generate IR",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+  }
 
   serverAdapter.registerRoute(server, "GET", "/openapi.json", async (request: HttpRequest, reply: HttpResponse) => {
     if (!config) {

@@ -1,7 +1,7 @@
 import type { YamaEntities, EntityDefinition } from "../entities.js";
 import { normalizeEntityDefinition } from "../entities.js";
 import { DatabaseTypeMapper } from "../types/index.js";
-import { createHash } from "crypto";
+import { sha256Hex } from "../platform/hash.js";
 
 /**
  * Represents the schema state of the database
@@ -128,7 +128,7 @@ function normalizeEntities(entities: YamaEntities): string {
  */
 export function computeModelHash(entities: YamaEntities): string {
   const normalized = normalizeEntities(entities);
-  return createHash("sha256").update(normalized).digest("hex");
+  return sha256Hex(normalized);
 }
 
 /**

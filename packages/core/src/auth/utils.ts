@@ -5,9 +5,11 @@
  */
 
 import type { PasswordStrengthResult } from "./types.js";
+import { getCryptoProvider, getPasswordHasher } from "../platform/crypto.js";
 
 // Default bcrypt cost factor
 const DEFAULT_SALT_ROUNDS = 12;
+const textEncoder = new TextEncoder();
 
 /**
  * Hash a password using bcrypt.
@@ -26,14 +28,8 @@ export async function hashPassword(
   password: string,
   saltRounds: number = DEFAULT_SALT_ROUNDS
 ): Promise<string> {
-  try {
-    const bcrypt = await import("bcryptjs");
-    return await bcrypt.hash(password, saltRounds);
-  } catch (error) {
-    throw new Error(
-      "bcryptjs is required for password hashing. Install it with: pnpm add bcryptjs"
-    );
-  }
+  const hasher = await getPasswordHasher();
+  return hasher.hash(password, saltRounds);
 }
 
 /**
@@ -55,14 +51,8 @@ export async function verifyPassword(
   password: string,
   hash: string
 ): Promise<boolean> {
-  try {
-    const bcrypt = await import("bcryptjs");
-    return await bcrypt.compare(password, hash);
-  } catch (error) {
-    throw new Error(
-      "bcryptjs is required for password verification. Install it with: pnpm add bcryptjs"
-    );
-  }
+  const hasher = await getPasswordHasher();
+  return hasher.verify(password, hash);
 }
 
 /**
@@ -218,8 +208,9 @@ export interface PasswordStrengthOptions {
  * @returns Hex-encoded random token
  */
 export function generateSecureToken(length: number = 32): string {
-  const crypto = require("crypto");
-  return crypto.randomBytes(length).toString("hex");
+  const crypto = getCryptoProvider();
+  const bytes = crypto.randomBytes(length);
+  return bytesToHex(bytes);
 }
 
 /**
@@ -229,7 +220,7 @@ export function generateSecureToken(length: number = 32): string {
  * @returns Numeric OTP string
  */
 export function generateOTP(length: number = 6): string {
-  const crypto = require("crypto");
+  const crypto = getCryptoProvider();
   const max = Math.pow(10, length);
   const min = Math.pow(10, length - 1);
   const randomNum = crypto.randomInt(min, max);
@@ -244,14 +235,17 @@ export function generateOTP(length: number = 6): string {
  * @returns true if strings are equal
  */
 export function secureCompare(a: string, b: string): boolean {
-  const crypto = require("crypto");
-  
-  // Ensure both strings are the same length to prevent timing leaks
-  if (a.length !== b.length) {
-    // Compare against itself to maintain constant time
-    crypto.timingSafeEqual(Buffer.from(a), Buffer.from(a));
+  const crypto = getCryptoProvider();
+  const aBytes = textEncoder.encode(a);
+  const bBytes = textEncoder.encode(b);
+  if (aBytes.length !== bBytes.length) {
     return false;
   }
-  
-  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  return crypto.timingSafeEqual(aBytes, bBytes);
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }

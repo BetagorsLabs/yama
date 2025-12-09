@@ -4,11 +4,13 @@
  * Track schema versions with checksums for migration management.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
-import { createHash } from "crypto";
+import { getFileSystem, getPathModule } from "../platform/fs.js";
+import { sha256Hex } from "../platform/hash.js";
 import type { YamaEntities } from "../entities.js";
 import { computeModelHash } from "./model.js";
+
+const fs = () => getFileSystem();
+const path = () => getPathModule();
 
 /**
  * Schema version record
@@ -48,14 +50,14 @@ export interface SchemaVersionHistory {
  * Get versioning directory path
  */
 export function getVersioningDir(projectDir: string): string {
-  return join(projectDir, ".yama", "versions");
+  return path().join(projectDir, ".yama", "versions");
 }
 
 /**
  * Get version history file path
  */
 export function getVersionHistoryPath(projectDir: string): string {
-  return join(getVersioningDir(projectDir), "history.json");
+  return path().join(getVersioningDir(projectDir), "history.json");
 }
 
 /**
@@ -63,8 +65,8 @@ export function getVersionHistoryPath(projectDir: string): string {
  */
 export function ensureVersioningDir(projectDir: string): void {
   const versioningDir = getVersioningDir(projectDir);
-  if (!existsSync(versioningDir)) {
-    mkdirSync(versioningDir, { recursive: true });
+  if (!fs().existsSync(versioningDir)) {
+    fs().mkdirSync(versioningDir, { recursive: true });
   }
 }
 
@@ -80,12 +82,12 @@ export function computeSchemaHash(entities: YamaEntities): string {
  */
 export function loadVersionHistory(projectDir: string): SchemaVersionHistory | null {
   const historyPath = getVersionHistoryPath(projectDir);
-  if (!existsSync(historyPath)) {
+  if (!fs().existsSync(historyPath)) {
     return null;
   }
   
   try {
-    const content = readFileSync(historyPath, "utf-8");
+    const content = fs().readFileSync(historyPath, "utf-8");
     return JSON.parse(content) as SchemaVersionHistory;
   } catch {
     return null;
@@ -98,7 +100,7 @@ export function loadVersionHistory(projectDir: string): SchemaVersionHistory | n
 export function saveVersionHistory(projectDir: string, history: SchemaVersionHistory): void {
   ensureVersioningDir(projectDir);
   const historyPath = getVersionHistoryPath(projectDir);
-  writeFileSync(historyPath, JSON.stringify(history, null, 2), "utf-8");
+  fs().writeFileSync(historyPath, JSON.stringify(history, null, 2), "utf-8");
 }
 
 /**
@@ -172,12 +174,8 @@ export function detectChangedEntities(
   if (oldEntities) {
     for (const name of newNames) {
       if (oldNames.has(name)) {
-        const oldHash = createHash("sha256")
-          .update(JSON.stringify(oldEntities[name]))
-          .digest("hex");
-        const newHash = createHash("sha256")
-          .update(JSON.stringify(newEntities[name]))
-          .digest("hex");
+        const oldHash = sha256Hex(JSON.stringify(oldEntities[name]));
+        const newHash = sha256Hex(JSON.stringify(newEntities[name]));
         
         if (oldHash !== newHash) {
           changed.push(name);
@@ -247,13 +245,13 @@ function saveEntitySnapshot(
   version: string,
   entities: YamaEntities
 ): void {
-  const snapshotDir = join(getVersioningDir(projectDir), "snapshots");
-  if (!existsSync(snapshotDir)) {
-    mkdirSync(snapshotDir, { recursive: true });
+  const snapshotDir = path().join(getVersioningDir(projectDir), "snapshots");
+  if (!fs().existsSync(snapshotDir)) {
+    fs().mkdirSync(snapshotDir, { recursive: true });
   }
   
-  const snapshotPath = join(snapshotDir, `${version}.json`);
-  writeFileSync(snapshotPath, JSON.stringify(entities, null, 2), "utf-8");
+  const snapshotPath = path().join(snapshotDir, `${version}.json`);
+  fs().writeFileSync(snapshotPath, JSON.stringify(entities, null, 2), "utf-8");
 }
 
 /**
@@ -263,18 +261,18 @@ export function loadEntitySnapshot(
   projectDir: string,
   version: string
 ): YamaEntities | null {
-  const snapshotPath = join(
+  const snapshotPath = path().join(
     getVersioningDir(projectDir),
     "snapshots",
     `${version}.json`
   );
   
-  if (!existsSync(snapshotPath)) {
+  if (!fs().existsSync(snapshotPath)) {
     return null;
   }
   
   try {
-    const content = readFileSync(snapshotPath, "utf-8");
+    const content = fs().readFileSync(snapshotPath, "utf-8");
     return JSON.parse(content) as YamaEntities;
   } catch {
     return null;
@@ -380,12 +378,8 @@ export function getVersionDiff(
   // Modified
   for (const name of toNames) {
     if (fromNames.has(name)) {
-      const fromHash = createHash("sha256")
-        .update(JSON.stringify(fromEntities[name]))
-        .digest("hex");
-      const toHash = createHash("sha256")
-        .update(JSON.stringify(toEntities[name]))
-        .digest("hex");
+      const fromHash = sha256Hex(JSON.stringify(fromEntities[name]));
+      const toHash = sha256Hex(JSON.stringify(toEntities[name]));
       
       if (fromHash !== toHash) {
         modifiedEntities.push(name);

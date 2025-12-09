@@ -1,8 +1,7 @@
-import { readFileSync } from "fs";
-import { join, dirname, extname, resolve } from "path";
 import { pathToFileURL } from "url";
 import type { MiddlewareHandler } from "./types.js";
 import { MiddlewareError, ErrorCodes } from "@betagors/yama-errors";
+import { getFileSystem, getPathModule } from "../platform/fs.js";
 
 /**
  * Load middleware handler from a file
@@ -13,12 +12,14 @@ export async function loadMiddlewareFromFile(
   filePath: string,
   projectDir: string
 ): Promise<MiddlewareHandler> {
+  const fs = getFileSystem();
+  const path = getPathModule();
   // Resolve file path
-  const resolvedPath = resolve(projectDir, filePath);
+  const resolvedPath = path.resolve(projectDir, filePath);
   
   // Check if file exists
   try {
-    readFileSync(resolvedPath, "utf-8");
+    fs.readFileSync(resolvedPath, "utf-8");
   } catch (error) {
     throw new MiddlewareError(
       `Middleware file not found: ${filePath}`,
@@ -34,7 +35,7 @@ export async function loadMiddlewareFromFile(
   }
 
   // Determine if it's TypeScript or JavaScript
-  const ext = extname(resolvedPath);
+  const ext = path.extname(resolvedPath);
   const isTypeScript = ext === ".ts" || ext === ".tsx";
 
   // For TypeScript files, we need to use the compiled output
@@ -46,7 +47,7 @@ export async function loadMiddlewareFromFile(
     // Try to find compiled version in dist/ folder
     const distPath = resolvedPath.replace(/src\//, "dist/").replace(/\.tsx?$/, ".js");
     try {
-      readFileSync(distPath, "utf-8");
+      fs.readFileSync(distPath, "utf-8");
       importPath = distPath;
     } catch {
       // If no dist version, try importing TypeScript directly (requires tsx/ts-node)

@@ -1,7 +1,6 @@
 import { existsSync, writeFileSync, readFileSync } from "fs";
 import { join, dirname, relative } from "path";
-import { generateTypes, generateHandlerContexts, type YamaEntities, type HandlerContextConfig, type AvailableServices, type YamaSchemas, type SchemaDefinition } from "@betagors/yama-core";
-import { generateSDK } from "@betagors/yama-sdk";
+import { generateTypes, generateHandlerContexts, generateIR, type YamaEntities, type HandlerContextConfig, type AvailableServices, type YamaSchemas, type SchemaDefinition } from "@betagors/yama-core";
 import { getDatabasePlugin } from "../utils/db-plugin.ts";
 import { readYamaConfig, ensureDir, getConfigDir } from "../utils/file-utils.ts";
 import { findYamaConfig, detectProjectType, inferOutputPath } from "../utils/project-detection.ts";
@@ -19,6 +18,7 @@ interface GenerateOptions {
   sdkOnly?: boolean;
   framework?: string;
   noCache?: boolean;
+  ir?: string;
 }
 
 export async function generateCommand(options: GenerateOptions): Promise<void> {
@@ -33,6 +33,7 @@ export async function generateCommand(options: GenerateOptions): Promise<void> {
   const watch = options.watch || false;
   const typesOnly = options.typesOnly || false;
   const sdkOnly = options.sdkOnly || false;
+  const irPath = options.ir;
 
   if (watch) {
     await generateWithWatch(configPath, options);
@@ -72,6 +73,7 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
     const projectType = detectProjectType(configDir);
     const cacheDir = getCacheDir(configDir);
     const useCache = !options.noCache;
+    const irOutputPath = options.ir;
 
     // Generate cache key for this config
     const cacheKey = useCache ? getConfigCacheKey(configPath, config) : null;
@@ -81,6 +83,14 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
     // Extract entities from schemas that have database properties
     // Schemas with database.table are treated as entities (legacy entities support removed)
     const allEntities: YamaEntities = extractEntitiesFromSchemas(config.schemas as YamaSchemas | undefined);
+
+    // Emit IR if requested
+    if (irOutputPath) {
+      const ir = generateIR(config as any);
+      await ensureDir(dirname(irOutputPath));
+      writeFileSync(irOutputPath, JSON.stringify(ir, null, 2));
+      console.log(`✅ IR written to ${irOutputPath}`);
+    }
 
     // Generate types (from schemas - entities are extracted from schemas with database properties)
     if (!options.sdkOnly && config.schemas) {
@@ -189,16 +199,6 @@ export async function generateOnce(configPath: string, options: GenerateOptions)
         );
       } catch (error) {
         // Silently fail - handler contexts were already generated earlier
-      }
-    }
-
-    // Generate SDK
-    if (!options.typesOnly && (config.apis as { rest?: any })?.rest) {
-      try {
-        const sdkOutput = getSdkOutputPath(configPath, options);
-        await generateSdkFile(config, sdkOutput, configDir, typesOutput, options.framework);
-      } catch (error) {
-        console.warn("⚠️  Failed to generate SDK:", error instanceof Error ? error.message : String(error));
       }
     }
 
@@ -613,48 +613,6 @@ ${exports.length > 0 ? exports.join("\n") : "// No generated files to export"}
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to generate main index: ${errorMsg}`);
-  }
-}
-
-async function generateSdkFile(
-  config: { schemas?: unknown; apis?: { rest?: any } },
-  outputPath: string,
-  configDir: string,
-  typesOutputPath?: string,
-  framework?: string
-): Promise<void> {
-  try {
-    const absoluteOutputPath = outputPath.startsWith(configDir) ? outputPath : join(configDir, outputPath);
-    const outputDir = dirname(absoluteOutputPath);
-    
-    // Calculate relative path from SDK to types file for import
-    // From .yama/gen/sdk/ to .yama/gen/types.ts
-    const typesImportPath = "../types.ts";
-
-    const sdkContent = generateSDK(
-      config as Parameters<typeof generateSDK>[0],
-      {
-        baseUrl: process.env.YAMA_API_URL || "http://localhost:3000",
-        typesImportPath,
-        framework
-      }
-    );
-
-    ensureDir(outputDir);
-    writeFileSync(absoluteOutputPath, sdkContent, "utf-8");
-    console.log(`✅ Generated SDK: ${outputPath.replace(configDir + "/", "")}`);
-
-    // Generate index.ts for SDK
-    const sdkDir = getSdkDir(configDir);
-    const indexContent = `// Auto-generated - do not edit
-export * from "./client.ts";
-`;
-    const indexPath = join(sdkDir, "index.ts");
-    writeFileSync(indexPath, indexContent, "utf-8");
-    console.log(`✅ Generated index: .yama/gen/sdk/index.ts`);
-  } catch (error) {
-    console.error("❌ Failed to generate SDK:", error instanceof Error ? error.message : String(error));
-    throw error;
   }
 }
 

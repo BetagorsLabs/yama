@@ -4,4 +4,5 @@ export default {
   migrations: 'Database Migrations',
   authentication: 'Authentication',
   'environment-variables': 'Environment Variables',
+  'runtime-compatibility': 'Runtime Compatibility',
 };

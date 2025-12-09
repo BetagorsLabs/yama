@@ -81,6 +81,7 @@ program
   .option("-o, --output <path>", "Output path")
   .option("--types-only", "Types only")
   .option("--sdk-only", "SDK only")
+   .option("--ir <path>", "Emit IR JSON to file")
   .action(generateCommand);
 
 // ============================================================================

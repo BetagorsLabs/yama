@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { join, dirname } from "path";
-import { createHash } from "crypto";
+import { getFileSystem, getPathModule } from "../platform/fs.js";
 import type { YamaEntities } from "../entities.js";
 import { entitiesToModel } from "./model.js";
+
+const fs = () => getFileSystem();
+const path = () => getPathModule();
 
 /**
  * Snapshot metadata
@@ -27,21 +28,21 @@ export interface Snapshot {
  * Get snapshots directory path
  */
 export function getSnapshotsDir(configDir: string): string {
-  return join(configDir, ".yama", "snapshots");
+  return path().join(configDir, ".yama", "snapshots");
 }
 
 /**
  * Get snapshot file path
  */
 export function getSnapshotPath(configDir: string, hash: string): string {
-  return join(getSnapshotsDir(configDir), `${hash}.json`);
+  return path().join(getSnapshotsDir(configDir), `${hash}.json`);
 }
 
 /**
  * Get manifest file path
  */
 export function getManifestPath(configDir: string): string {
-  return join(getSnapshotsDir(configDir), "manifest.json");
+  return path().join(getSnapshotsDir(configDir), "manifest.json");
 }
 
 /**
@@ -49,8 +50,8 @@ export function getManifestPath(configDir: string): string {
  */
 export function ensureSnapshotsDir(configDir: string): void {
   const snapshotsDir = getSnapshotsDir(configDir);
-  if (!existsSync(snapshotsDir)) {
-    mkdirSync(snapshotsDir, { recursive: true });
+  if (!fs().existsSync(snapshotsDir)) {
+    fs().mkdirSync(snapshotsDir, { recursive: true });
   }
 }
 
@@ -70,12 +71,12 @@ export interface SnapshotManifest {
  */
 export function loadManifest(configDir: string): SnapshotManifest {
   const manifestPath = getManifestPath(configDir);
-  if (!existsSync(manifestPath)) {
+  if (!fs().existsSync(manifestPath)) {
     return { snapshots: [] };
   }
   
   try {
-    const content = readFileSync(manifestPath, "utf-8");
+    const content = fs().readFileSync(manifestPath, "utf-8");
     return JSON.parse(content) as SnapshotManifest;
   } catch {
     return { snapshots: [] };
@@ -88,7 +89,7 @@ export function loadManifest(configDir: string): SnapshotManifest {
 export function saveManifest(configDir: string, manifest: SnapshotManifest): void {
   ensureSnapshotsDir(configDir);
   const manifestPath = getManifestPath(configDir);
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+  fs().writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
 }
 
 /**
@@ -114,7 +115,7 @@ export function createSnapshot(
 export function saveSnapshot(configDir: string, snapshot: Snapshot): void {
   ensureSnapshotsDir(configDir);
   const snapshotPath = getSnapshotPath(configDir, snapshot.hash);
-  writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2), "utf-8");
+  fs().writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2), "utf-8");
   
   // Update manifest
   const manifest = loadManifest(configDir);
@@ -140,11 +141,11 @@ export function saveSnapshot(configDir: string, snapshot: Snapshot): void {
  */
 export function loadSnapshot(configDir: string, hash: string): Snapshot {
   const snapshotPath = getSnapshotPath(configDir, hash);
-  if (!existsSync(snapshotPath)) {
+  if (!fs().existsSync(snapshotPath)) {
     throw new Error(`Snapshot not found: ${hash}`);
   }
   
-  const content = readFileSync(snapshotPath, "utf-8");
+  const content = fs().readFileSync(snapshotPath, "utf-8");
   return JSON.parse(content) as Snapshot;
 }
 
@@ -153,7 +154,7 @@ export function loadSnapshot(configDir: string, hash: string): Snapshot {
  */
 export function snapshotExists(configDir: string, hash: string): boolean {
   const snapshotPath = getSnapshotPath(configDir, hash);
-  return existsSync(snapshotPath);
+  return fs().existsSync(snapshotPath);
 }
 
 /**
@@ -187,9 +188,8 @@ export function getSnapshotMetadata(configDir: string, hash: string): SnapshotMe
  */
 export function deleteSnapshot(configDir: string, hash: string): void {
   const snapshotPath = getSnapshotPath(configDir, hash);
-  if (existsSync(snapshotPath)) {
-    const fs = require("fs");
-    fs.unlinkSync(snapshotPath);
+  if (fs().existsSync(snapshotPath) && fs().unlinkSync) {
+    fs().unlinkSync!(snapshotPath);
   }
   
   // Update manifest

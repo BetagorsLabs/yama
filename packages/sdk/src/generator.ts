@@ -1,4 +1,11 @@
 /**
+ * Legacy SDK generator removed.
+ * Use Yama IR and the runtime client (YamaClient).
+ */
+export function generateSDK(): string {
+  throw new Error("generateSDK has been removed. Use Yama IR and YamaClient.");
+}
+/**
  * SDK Generator for Yama
  * Generates TypeScript SDK client from yama.yaml endpoint definitions
  */

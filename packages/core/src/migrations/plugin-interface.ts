@@ -1,4 +1,5 @@
 import type { MigrationStepUnion, MigrationStepType } from "./diff.js";
+import { sha256Hex } from "../platform/hash.js";
 
 /**
  * Database capabilities for migration operations
@@ -300,8 +301,7 @@ export function createBaseMigrationPlugin(
     },
     
     computeChecksum(content: string): string {
-      const { createHash } = require("crypto");
-      return createHash("sha256").update(content).digest("hex");
+      return sha256Hex(content);
     },
   };
 }

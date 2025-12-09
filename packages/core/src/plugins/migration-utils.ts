@@ -1,5 +1,3 @@
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
 import semver from "semver";
 import type { YamaPlugin, PluginManifest } from "./base.js";
 import type { PluginMigration } from "./migrations.js";
@@ -8,6 +6,9 @@ import {
   getInstalledPluginVersion,
   getPluginMigrationHistory,
 } from "./migrations.js";
+import { getFileSystem } from "../platform/fs.js";
+
+const fs = () => getFileSystem();
 
 /**
  * Migration plan information
@@ -25,12 +26,12 @@ export interface MigrationPlan {
  * This is a simple validation - full SQL parsing would require a SQL parser
  */
 export async function validateMigrationFile(path: string): Promise<boolean> {
-  if (!existsSync(path)) {
+  if (!fs().existsSync(path)) {
     return false;
   }
 
   try {
-    const content = readFileSync(path, "utf-8");
+    const content = fs().readFileSync(path, "utf-8");
     
     // Basic validation: check if it's not empty and contains SQL-like content
     if (!content.trim()) {

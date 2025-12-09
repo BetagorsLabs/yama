@@ -2,6 +2,21 @@ export function helloYamaCore() {
   return "Yama core online";
 }
 
+// Platform configuration hooks
+export {
+  setFileSystem,
+  setPathModule,
+  getFileSystem,
+  getPathModule,
+} from "./platform/fs.js";
+export { setEnvProvider, getEnvProvider } from "./platform/env.js";
+export {
+  setCryptoProvider,
+  setPasswordHasher,
+  getCryptoProvider,
+  getPasswordHasher,
+} from "./platform/crypto.js";
+
 // Export schema validation
 export {
   SchemaValidator,
@@ -652,6 +667,14 @@ export {
 export type {
   NormalizedYamaConfig,
 } from "./config-normalizer.js";
+// Export IR builder
+export {
+  generateIR,
+} from "./ir/generator.js";
+export type {
+  YamaIR,
+  IRHttpEndpoint,
+} from "./ir/types.js";
 
 // Export APIs system
 export * from "./apis/index.js";

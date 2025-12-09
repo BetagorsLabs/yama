@@ -1,5 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { getFileSystem, getPathModule } from "../platform/fs.js";
+
+const fs = () => getFileSystem();
+const path = () => getPathModule();
 
 /**
  * Shadow column information
@@ -32,14 +34,14 @@ export const DEFAULT_SHADOW_RETENTION_DAYS = 30;
  * Get shadows directory path
  */
 export function getShadowsDir(configDir: string): string {
-  return join(configDir, ".yama", "shadows");
+  return path().join(configDir, ".yama", "shadows");
 }
 
 /**
  * Get shadow manifest file path
  */
 export function getShadowManifestPath(configDir: string): string {
-  return join(getShadowsDir(configDir), "manifest.json");
+  return path().join(getShadowsDir(configDir), "manifest.json");
 }
 
 /**
@@ -47,8 +49,8 @@ export function getShadowManifestPath(configDir: string): string {
  */
 export function ensureShadowsDir(configDir: string): void {
   const shadowsDir = getShadowsDir(configDir);
-  if (!existsSync(shadowsDir)) {
-    mkdirSync(shadowsDir, { recursive: true });
+  if (!fs().existsSync(shadowsDir)) {
+    fs().mkdirSync(shadowsDir, { recursive: true });
   }
 }
 
@@ -69,12 +71,12 @@ export function generateShadowColumnName(
  */
 export function loadShadowManifest(configDir: string): ShadowManifest {
   const manifestPath = getShadowManifestPath(configDir);
-  if (!existsSync(manifestPath)) {
+  if (!fs().existsSync(manifestPath)) {
     return { shadows: [] };
   }
   
   try {
-    const content = readFileSync(manifestPath, "utf-8");
+    const content = fs().readFileSync(manifestPath, "utf-8");
     return JSON.parse(content) as ShadowManifest;
   } catch {
     return { shadows: [] };
@@ -87,7 +89,7 @@ export function loadShadowManifest(configDir: string): ShadowManifest {
 export function saveShadowManifest(configDir: string, manifest: ShadowManifest): void {
   ensureShadowsDir(configDir);
   const manifestPath = getShadowManifestPath(configDir);
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+  fs().writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
 }
 
 /**

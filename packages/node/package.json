@@ -40,6 +40,7 @@
     "@betagors/yama-openapi": "workspace:*",
     "@betagors/yama-postgres": "workspace:*",
     "@betagors/yama-fastify": "workspace:*",
+    "bcryptjs": "^2.4.3",
     "js-yaml": "^4.1.1",
     "dotenv": "^16.4.5"
   },
