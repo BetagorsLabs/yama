@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { cn } from '../lib/utils';
 
 // Manual sidebar configuration - replace with dynamic if needed later
-const sidebarItems = [
+export const sidebarItems = [
     {
         title: 'Getting Started',
         items: [
@@ -36,9 +37,12 @@ const sidebarItems = [
     }
 ];
 
-export function Sidebar() {
+export function Sidebar({ className }: { className?: string }) {
     return (
-        <aside className="fixed top-14 z-30 hidden h-[calc(100vh-3.5rem)] w-full shrink-0 md:sticky md:block md:w-64 border-r border-border bg-background">
+        <aside className={cn(
+            "fixed top-14 z-30 hidden h-[calc(100vh-3.5rem)] w-full shrink-0 md:sticky md:block md:w-64 border-r border-border bg-background",
+            className,
+        )}>
             <ScrollArea className="h-full py-6 pr-6 lg:py-8">
                 <div className="w-full px-4">
                     {sidebarItems.map((group, i) => (

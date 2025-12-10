@@ -14,10 +14,14 @@ module.exports = {
       center: true,
       padding: '1.5rem',
       screens: {
-        '2xl': '1200px',
+        '2xl': '1400px',
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['Fira Code', 'Menlo', 'Monaco', 'Courier New', 'monospace'],
+      },
       borderRadius: {
         lg: '12px',
         md: '10px',
@@ -53,9 +57,22 @@ module.exports = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        // Neon accent colors
+        cyan: {
+          400: '#06b6d4',
+          500: '#0891b2',
+          600: '#0e7490',
+        },
+        green: {
+          400: '#22c55e',
+          500: '#16a34a',
+          600: '#15803d',
+        },
       },
       boxShadow: {
-        glow: '0 15px 50px rgba(0, 112, 243, 0.25)',
+        glow: '0 0 20px rgba(6, 182, 212, 0.5)',
+        'glow-lg': '0 0 30px rgba(6, 182, 212, 0.6)',
+        'glow-green': '0 0 20px rgba(34, 197, 94, 0.5)',
       },
       keyframes: {
         'accordion-down': {
@@ -66,13 +83,18 @@ module.exports = {
           from: { height: 'var(--radix-accordion-content-height)' },
           to: { height: '0' },
         },
+        'pulse-slow': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.5' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
+        'pulse-slow': 'pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
     },
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [require('tailwindcss-animate'), require('@tailwindcss/typography')],
 };
 

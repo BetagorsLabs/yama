@@ -1,22 +1,26 @@
 # Getting Started
 
+import { TabbedCode, Tab } from '@/components/ui/tabbed-code';
+
 Learn how to install Yama, create your first project, and run the development server.
 
 ## Installation
 
 Install the Yama CLI globally:
 
-```bash
-npm install -g @betagors/yama-cli
-# or
-pnpm add -g @betagors/yama-cli
-```
+<TabbedCode defaultTab="pnpm">
+  <Tab label="npm" code="npm install -g @betagors/yama-cli" />
+  <Tab label="pnpm" code="pnpm add -g @betagors/yama-cli" />
+  <Tab label="yarn" code="yarn global add @betagors/yama-cli" />
+</TabbedCode>
 
-Or use it directly with `npx`:
+Or run it on demand:
 
-```bash
-npx @betagors/yama-cli create my-app
-```
+<TabbedCode defaultTab="pnpm">
+  <Tab label="pnpm" code="pnpm dlx @betagors/yama-cli create my-app" />
+  <Tab label="npm" code="npx @betagors/yama-cli create my-app" />
+  <Tab label="yarn" code="yarn dlx @betagors/yama-cli create my-app" />
+</TabbedCode>
 
 ## Create a Project
 
@@ -49,11 +53,17 @@ my-app/
 
 Navigate to your project and start the dev server:
 
-```bash
-cd my-app
+<TabbedCode defaultTab="pnpm">
+  <Tab label="npm" code={`cd my-app
 npm install
-yama dev
-```
+yama dev`} />
+  <Tab label="pnpm" code={`cd my-app
+pnpm install
+yama dev`} />
+  <Tab label="yarn" code={`cd my-app
+yarn install
+yama dev`} />
+</TabbedCode>
 
 The server starts at `http://localhost:4000` with:
 - Hot reload on file changes

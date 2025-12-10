@@ -1,0 +1,6 @@
+Contact: https://github.com/betagors/yamajs/security/advisories/new
+Contact: mailto:security@yamajs.com
+Preferred-Languages: en
+Canonical: https://yamajs.com/.well-known/security.txt
+Policy: https://github.com/betagors/yamajs/security/policy
+Expires: 2026-12-31T23:59:59.000Z

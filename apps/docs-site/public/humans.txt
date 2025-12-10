@@ -1,0 +1,23 @@
+/* TEAM */
+Creator: Betagors
+GitHub: https://github.com/betagors
+𝕏: @yamajs_org
+
+/* THANKS */
+Framework: Next.js 15
+UI: Tailwind CSS + shadcn/ui
+Inspiration: Drizzle ORM, Hono, tRPC, Trigger.dev
+Community: All the developers who believed in this project
+
+/* SITE */
+Last update: 2025/12/09
+Language: English
+Standards: HTML5, CSS3, ES2024
+Components: React 19, TypeScript 5
+Tools: Vercel, GitHub Actions
+
+/* PHILOSOPHY */
+90% less code. 100% of the power.
+Built by one indie developer.
+No VC. No bullshit.
+100% open source forever.

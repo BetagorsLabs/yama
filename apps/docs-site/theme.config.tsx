@@ -23,7 +23,7 @@ export default {
   },
   docsRepositoryBase: 'https://github.com/betagors/yamajs/tree/main/apps/docs-site',
   footer: {
-    text: `MIT ${new Date().getFullYear()} © Yama JS.`,
+    text: `MPL-2.0 ${new Date().getFullYear()} © Yama JS.`,
   },
 };
 
